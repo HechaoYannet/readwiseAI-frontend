@@ -185,8 +185,10 @@ export default function ReadPage({ params }: ReadPageProps) {
     store.completeGroup();
 
     const totalQ = group?.articles.flatMap((a) => a.questions).length ?? 0;
+    const storeAnswers = store.answers;
     const correctCount = group?.articles.flatMap((a) => a.questions).filter((q) => {
-      return localAnswers[q.question_id] === q.correct_answer;
+      const recorded = storeAnswers[q.question_id];
+      return recorded ? recorded.answer === q.correct_answer : localAnswers[q.question_id] === q.correct_answer;
     }).length ?? 0;
     const accuracy = totalQ > 0 ? Math.round((correctCount / totalQ) * 100) : 0;
     const now = Date.now();

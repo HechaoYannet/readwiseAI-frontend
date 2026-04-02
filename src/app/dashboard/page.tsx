@@ -38,7 +38,7 @@ export default function DashboardPage() {
     endurance: powerScore?.endurance ?? 65,
   };
 
-  const todayScore = powerScore?.total ?? trendData[trendData.length - 1].score;
+  const todayScore = powerScore?.total != null ? powerScore.total : trendData[trendData.length - 1].score;
   const displayTrend = trendData.map((d, i) =>
     i === trendData.length - 1 ? { ...d, score: todayScore } : d,
   );
