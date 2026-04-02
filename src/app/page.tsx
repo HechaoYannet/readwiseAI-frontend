@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { BookOpenCheck, Gauge, Lightbulb, Settings, Timer, Zap, ChevronRight } from 'lucide-react';
+import { BookOpenCheck, Gauge, Lightbulb, MessageCircle, Settings, Timer, Zap, ChevronRight } from 'lucide-react';
 import ModeCardItem from '@/components/home/mode-card';
 import PowerOrb from '@/components/home/power-orb';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTrainingStore } from '@/lib/store';
+import { cn } from '@/lib/utils';
 import type { ModeCard } from '@/types/home';
 
 const modeCards: ModeCard[] = [
@@ -49,6 +51,20 @@ export default function Home() {
   const score = powerScore?.total ?? 368;
 
   const completedIdx = currentGroup?.sessions.filter((s) => s.status === 'completed').length ?? 0;
+
+  const [showAiChat, setShowAiChat] = useState(false);
+  const [aiInput, setAiInput] = useState('');
+  const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
+
+  function handleAiSend() {
+    if (!aiInput.trim()) return;
+    setAiMessages((prev) => [
+      ...prev,
+      { role: 'user', text: aiInput },
+      { role: 'bot', text: '功能开发中，敬请期待！' },
+    ]);
+    setAiInput('');
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -106,6 +122,56 @@ export default function Home() {
           <ModeCardItem key={item.title} item={item} />
         ))}
       </section>
+
+      {/* AI Chat Floating Ball */}
+      <div className="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2">
+        {showAiChat && (
+          <div className="w-72 rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between bg-[#1E3A5F] px-4 py-3">
+              <span className="text-sm font-semibold text-white">AI 问答助手</span>
+              <button type="button" onClick={() => setShowAiChat(false)} className="text-white/70 hover:text-white text-xs">✕</button>
+            </div>
+            <div className="flex-1 max-h-48 overflow-y-auto p-3 space-y-2 bg-slate-50">
+              {aiMessages.length === 0 && (
+                <p className="text-xs text-slate-400">有什么关于英语学习的问题？</p>
+              )}
+              {aiMessages.map((m, i) => (
+                <div key={i} className={cn(
+                  'rounded-lg px-2.5 py-1.5 text-xs',
+                  m.role === 'user' ? 'bg-sky-100 text-sky-800 ml-6' : 'bg-white border border-slate-200 text-slate-700'
+                )}>
+                  {m.text}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 p-2 border-t border-slate-100">
+              <input
+                type="text"
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAiSend(); }}
+                placeholder="输入问题..."
+                className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-sky-400"
+              />
+              <button
+                type="button"
+                onClick={handleAiSend}
+                className="rounded-lg bg-sky-500 px-2 py-1.5 text-white text-xs hover:bg-sky-600"
+              >
+                发送
+              </button>
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowAiChat((v) => !v)}
+          className="h-12 w-12 rounded-full bg-[#1E3A5F] text-white shadow-lg hover:bg-[#16304f] flex items-center justify-center transition-transform hover:scale-105"
+          aria-label="AI 问答助手"
+        >
+          <MessageCircle className="h-6 w-6" />
+        </button>
+      </div>
     </main>
   );
 }

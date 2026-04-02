@@ -2,7 +2,7 @@
 
 import { use, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Clock3, Flag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock3, Flag, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,30 +32,15 @@ function useStopwatch(startEpoch: number | null) {
   return `${mm}:${ss}`;
 }
 
-function OptionButton({
-  label,
-  text,
-  selected,
-  submitted,
-  correct,
-  onClick,
-}: {
-  label: string;
-  text: string;
-  selected: boolean;
-  submitted: boolean;
-  correct: boolean;
-  onClick: () => void;
+function OptionButton({ label, text, selected, onClick }: {
+  label: string; text: string; selected: boolean; onClick: () => void;
 }) {
-  let cls = 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50';
-  if (submitted && correct) cls = 'border-emerald-400 bg-emerald-50 text-emerald-800';
-  else if (submitted && selected && !correct) cls = 'border-red-400 bg-red-50 text-red-800';
-  else if (selected) cls = 'border-sky-400 bg-sky-50 text-sky-700';
-
+  const cls = selected
+    ? 'border-sky-400 bg-sky-50 text-sky-700'
+    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50';
   return (
     <button
       type="button"
-      disabled={submitted}
       onClick={onClick}
       className={cn('w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors', cls)}
     >
@@ -80,18 +65,33 @@ export default function ReadPage({ params }: ReadPageProps) {
   const [localAnswers, setLocalAnswers] = useState<Record<string, string>>({});
   const [questionIndex, setQuestionIndex] = useState(0);
   const [questionStartTimes, setQuestionStartTimes] = useState<Record<string, number>>({});
-  const [submittedQuestions, setSubmittedQuestions] = useState<Set<string>>(new Set());
   const [paragraphTimings, setParagraphTimings] = useState<ParagraphTiming[]>([]);
+  const [showAnswerSheet, setShowAnswerSheet] = useState(false);
   const paragraphEnterTimes = useRef<Record<number, number>>({});
   const paragraphRefs = useRef<(HTMLParagraphElement | null)[]>([]);
 
-  // Bootstrap: if no group in store, load mock
+  // Bootstrap: if no group in store, load mock; also hydrate localAnswers from persisted store
   useEffect(() => {
     if (!store.currentGroup) {
       const mock = createMockTrainingGroup();
       store.startGroup({ ...mock, group_id: groupId });
     }
+    const saved = useTrainingStore.getState().answers;
+    setLocalAnswers(Object.fromEntries(
+      Object.entries(saved).map(([k, v]) => [k, v.answer])
+    ));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Read ?q param on mount to jump to a specific question
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const qParam = params.get('q');
+    if (qParam !== null) {
+      const idx = parseInt(qParam, 10);
+      if (!isNaN(idx)) setQuestionIndex(idx);
+    }
   }, []);
 
   // Set article index in store
@@ -160,7 +160,6 @@ export default function ReadPage({ params }: ReadPageProps) {
     const timeSpent = Date.now() - start;
     setLocalAnswers((prev) => ({ ...prev, [qId]: answer }));
     store.recordAnswer(qId, answer, timeSpent, start);
-    setSubmittedQuestions((prev) => new Set(prev).add(qId));
   }
 
   function finalizeTimings(): ParagraphTiming[] {
@@ -267,9 +266,19 @@ export default function ReadPage({ params }: ReadPageProps) {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base text-[#1E3A5F]">答题区</CardTitle>
-              <span className="text-xs text-slate-400">
-                {Object.keys(localAnswers).filter((k) => questions.some((q) => q.question_id === k)).length} / {questions.length} 已作答
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">
+                  {Object.keys(localAnswers).filter((k) => questions.some((q) => q.question_id === k)).length} / {questions.length} 已作答
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowAnswerSheet(true)}
+                  title="答题卡"
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-sky-100 hover:text-sky-600 transition-colors"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             {/* Question navigation pills */}
             <div className="flex gap-1.5 flex-wrap mt-1">
@@ -309,8 +318,6 @@ export default function ReadPage({ params }: ReadPageProps) {
                     label={label}
                     text={text}
                     selected={localAnswers[currentQuestion.question_id] === label}
-                    submitted={submittedQuestions.has(currentQuestion.question_id)}
-                    correct={currentQuestion.correct_answer === label}
                     onClick={() => selectAnswer(currentQuestion.question_id, label)}
                   />
                 ))}
@@ -362,6 +369,61 @@ export default function ReadPage({ params }: ReadPageProps) {
           )}
         </Card>
       </section>
+
+      {/* Answer Sheet Overlay */}
+      {showAnswerSheet && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowAnswerSheet(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl bg-white shadow-2xl p-5 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-[#1E3A5F]">答题卡</h2>
+              <button type="button" onClick={() => setShowAnswerSheet(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            {group?.articles.map((art, aIdx) => (
+              <div key={art.article_id} className="mb-4">
+                <p className="text-xs text-slate-500 mb-2 font-medium">文章 {aIdx + 1} · {art.title}</p>
+                <div className="flex flex-wrap gap-2">
+                  {art.questions.map((q, qIdx) => {
+                    const answered = !!(localAnswers[q.question_id] || store.answers[q.question_id]);
+                    const isCurrent = aIdx === articleIndex && qIdx === questionIndex;
+                    return (
+                      <button
+                        key={q.question_id}
+                        type="button"
+                        onClick={() => {
+                          if (aIdx === articleIndex) {
+                            setQuestionIndex(qIdx);
+                            setShowAnswerSheet(false);
+                          } else {
+                            setShowAnswerSheet(false);
+                            router.push(`/read/${groupId}-${aIdx}?q=${qIdx}`);
+                          }
+                        }}
+                        className={cn(
+                          'h-9 w-9 rounded-full text-sm font-semibold transition-all',
+                          isCurrent
+                            ? 'ring-2 ring-sky-500 ring-offset-1 bg-sky-500 text-white'
+                            : answered
+                            ? 'bg-sky-500 text-white'
+                            : 'bg-white border-2 border-slate-300 text-slate-500',
+                        )}
+                      >
+                        {qIdx + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <p className="text-xs text-slate-400 mt-2 text-center">提示：可跨文章跳题，最终提交前须完成所有题目</p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

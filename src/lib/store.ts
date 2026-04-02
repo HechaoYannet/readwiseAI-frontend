@@ -15,6 +15,7 @@ interface TrainingStore {
   answers: Record<string, AnswerRecord>;
   diagnosisResults: Record<string, DiagnosisResult>;
   powerScore: PowerScore | null;
+  trainingHistory: TrainingGroup[];
 
   startGroup: (group: TrainingGroup) => void;
   setCurrentArticle: (index: number) => void;
@@ -24,6 +25,7 @@ interface TrainingStore {
   completeGroup: () => void;
   resetGroup: () => void;
   setPowerScore: (score: PowerScore) => void;
+  addToHistory: (group: TrainingGroup) => void;
 }
 
 export const useTrainingStore = create<TrainingStore>()(
@@ -35,6 +37,7 @@ export const useTrainingStore = create<TrainingStore>()(
       answers: {},
       diagnosisResults: {},
       powerScore: null,
+      trainingHistory: [],
 
       startGroup: (group) =>
         set({
@@ -106,12 +109,18 @@ export const useTrainingStore = create<TrainingStore>()(
         }));
       },
 
-      completeGroup: () =>
-        set((state) => ({
-          currentGroup: state.currentGroup
-            ? { ...state.currentGroup, status: 'completed', end_time: Date.now() }
-            : null,
-        })),
+      completeGroup: () => {
+        const state = get();
+        const completedGroup = state.currentGroup
+          ? { ...state.currentGroup, status: 'completed' as const, end_time: Date.now() }
+          : null;
+        set({ currentGroup: completedGroup });
+        if (completedGroup) {
+          set((s) => ({
+            trainingHistory: [completedGroup, ...s.trainingHistory].slice(0, 20),
+          }));
+        }
+      },
 
       resetGroup: () =>
         set({
@@ -123,6 +132,11 @@ export const useTrainingStore = create<TrainingStore>()(
         }),
 
       setPowerScore: (score) => set({ powerScore: score }),
+
+      addToHistory: (group) =>
+        set((s) => ({
+          trainingHistory: [group, ...s.trainingHistory].slice(0, 20),
+        })),
     }),
     {
       name: 'readwise-training',
@@ -133,6 +147,7 @@ export const useTrainingStore = create<TrainingStore>()(
         answers: state.answers,
         diagnosisResults: state.diagnosisResults,
         powerScore: state.powerScore,
+        trainingHistory: state.trainingHistory,
       }),
     },
   ),

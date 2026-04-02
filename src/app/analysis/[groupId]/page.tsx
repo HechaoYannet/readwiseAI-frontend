@@ -13,6 +13,51 @@ interface AnalysisPageProps {
   params: Promise<{ groupId: string }>;
 }
 
+function extractLongSentences(content: string): string[] {
+  return content
+    .split(/[.!?]/)
+    .map((s) => s.trim())
+    .filter((s) => s.split(' ').length > 15)
+    .slice(0, 3);
+}
+
+function LongSentenceItem({ sentence, onAsk }: { sentence: string; onAsk: (t: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+      <p className="text-xs text-slate-700 leading-relaxed italic">&ldquo;{sentence}&rdquo;</p>
+      {expanded && (
+        <div className="space-y-1 text-xs text-slate-500">
+          <p>功能开发中，AI 分析将在后续版本上线。</p>
+        </div>
+      )}
+      <div className="flex gap-1.5 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100"
+        >
+          {expanded ? '收起' : '拆解主干'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100"
+        >
+          翻译
+        </button>
+        <button
+          type="button"
+          onClick={() => onAsk(sentence)}
+          className="rounded border border-sky-200 px-2 py-0.5 text-xs text-sky-600 hover:bg-sky-50"
+        >
+          提问
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AnalysisPage({ params }: AnalysisPageProps) {
   const { groupId } = use(params);
   const store = useTrainingStore();
@@ -20,7 +65,9 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
   const [articleTab, setArticleTab] = useState(0);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
+  const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
 
   // Bootstrap mock group if nothing in store (stable reference via useMemo)
   const mockGroup = useMemo(() => {
@@ -28,7 +75,8 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
     return { ...mock, group_id: groupId, status: 'completed' as const };
   }, [groupId]);
 
-  const group = store.currentGroup ?? mockGroup;
+  const historicalGroup = store.trainingHistory?.find((g) => g.group_id === groupId);
+  const group = (store.currentGroup?.group_id === groupId ? store.currentGroup : historicalGroup) ?? mockGroup;
 
   const article = group.articles[articleTab];
   const paragraphs = article.content.split('\n\n').filter(Boolean);
@@ -65,6 +113,22 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
     setChatInput('');
   }
 
+  function handleTextSelection() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+      setSelection(null);
+      return;
+    }
+    const text = sel.toString().trim();
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    setSelection({
+      text,
+      x: rect.left + rect.width / 2,
+      y: rect.top - 45,
+    });
+  }
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
@@ -72,6 +136,8 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
   const wrongQuestions = article.questions.filter(
     (q) => !isCorrect(q.question_id, q.correct_answer) && getUserAnswer(q.question_id),
   );
+
+  const longSentences = extractLongSentences(article.content);
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
@@ -103,13 +169,13 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-5">
-        {/* Left: article + error analysis */}
+        {/* Left: article + error analysis + long sentence analysis */}
         <div className="space-y-4 lg:col-span-3">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-[#1E3A5F]">{article.title}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 max-h-64 overflow-y-auto">
+            <CardContent className="space-y-3 max-h-64 overflow-y-auto" onMouseUp={handleTextSelection}>
               {paragraphs.map((para, i) => (
                 <p key={i} className="text-sm leading-7 text-slate-700">{para}</p>
               ))}
@@ -151,6 +217,29 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
                     </div>
                   );
                 })
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Long Sentence Analysis */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base text-[#1E3A5F]">长难句分析</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {longSentences.length === 0 ? (
+                <p className="text-sm text-slate-400">本篇无长难句</p>
+              ) : (
+                longSentences.map((sentence, i) => (
+                  <LongSentenceItem
+                    key={i}
+                    sentence={sentence}
+                    onAsk={(text) => {
+                      setChatInput(`提问[${text}]`);
+                      setTimeout(() => chatInputRef.current?.focus(), 100);
+                    }}
+                  />
+                ))
               )}
             </CardContent>
           </Card>
@@ -212,17 +301,22 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
                       <span className="mr-1 text-sky-600">Q{i + 1}.</span>
                       {q.question_text}
                     </p>
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       {Object.entries(q.options).map(([label, text]) => {
-                        let cls = 'text-slate-500';
-                        if (label === q.correct_answer) cls = 'text-emerald-700 font-medium';
-                        else if (label === userAns && !correct) cls = 'text-red-600 line-through';
+                        const isCorrectOption = label === q.correct_answer;
+                        const isUserWrongChoice = label === userAns && !correct;
+                        const isUserCorrectChoice = label === userAns && correct;
+                        let cls = 'border-slate-200 bg-white text-slate-600';
+                        if (isCorrectOption) cls = 'border-emerald-400 bg-emerald-50 text-emerald-800';
+                        else if (isUserWrongChoice) cls = 'border-red-400 bg-red-50 text-red-700';
                         return (
-                          <p key={label} className={cn('text-xs', cls)}>
-                            {label}. {text}
-                            {label === q.correct_answer && ' ✓'}
-                            {label === userAns && !correct && ' ✗'}
-                          </p>
+                          <div key={label} className={cn('w-full rounded-lg border px-3 py-2 text-xs', cls)}>
+                            <span className="mr-1.5 font-semibold">{label}.</span>
+                            {text}
+                            {isCorrectOption && <span className="ml-1.5 text-emerald-600">✓</span>}
+                            {isUserWrongChoice && <span className="ml-1.5 text-red-500">✗ 你选的</span>}
+                            {isUserCorrectChoice && <span className="ml-1.5 text-emerald-600">✓ 你选的</span>}
+                          </div>
                         );
                       })}
                     </div>
@@ -257,6 +351,7 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
               </div>
               <div className="flex gap-2">
                 <input
+                  ref={chatInputRef}
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
@@ -276,6 +371,40 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
           </Link>
         </div>
       </div>
+
+      {/* Text selection tooltip */}
+      {selection && (
+        <div
+          className="fixed z-50 flex gap-1 rounded-lg bg-slate-800 p-1 shadow-xl text-white text-xs"
+          style={{ left: `${selection.x}px`, top: `${selection.y}px`, transform: 'translateX(-50%)' }}
+        >
+          <button
+            type="button"
+            className="px-2 py-1 rounded hover:bg-slate-700"
+            onClick={() => {
+              setChatMessages((prev) => [
+                ...prev,
+                { role: 'user', text: `翻译：${selection.text}` },
+                { role: 'bot', text: '翻译功能开发中，敬请期待！' },
+              ]);
+              setSelection(null);
+            }}
+          >
+            翻译
+          </button>
+          <button
+            type="button"
+            className="px-2 py-1 rounded hover:bg-slate-700"
+            onClick={() => {
+              setChatInput(`提问[${selection.text}]`);
+              setSelection(null);
+              setTimeout(() => chatInputRef.current?.focus(), 100);
+            }}
+          >
+            提问
+          </button>
+        </div>
+      )}
     </main>
   );
 }

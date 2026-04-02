@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { BookOpen, ChevronRight, Loader2, PlayCircle, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +27,7 @@ const topics = [
 
 export default function TrainPage() {
   const router = useRouter();
-  const { currentGroup, startGroup, resetGroup } = useTrainingStore();
+  const { currentGroup, startGroup, resetGroup, trainingHistory } = useTrainingStore();
 
   const [difficulty, setDifficulty] = useState('L2');
   const [topic, setTopic] = useState<string | null>(null);
@@ -172,6 +173,34 @@ export default function TrainPage() {
           </>
         )}
       </Button>
+
+      {/* Training History */}
+      {trainingHistory.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-[#1E3A5F] mb-3">训练记录</h2>
+          <div className="space-y-2">
+            {trainingHistory.map((g) => {
+              const date = new Date(g.start_time).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+              const durationMin = Math.round(((g.end_time || g.start_time) - g.start_time) / 60000);
+              return (
+                <Link key={g.group_id} href={`/analysis/${g.group_id}`}>
+                  <Card className="hover:shadow-sm transition-shadow cursor-pointer border-slate-100">
+                    <CardContent className="pt-4 pb-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">{date} · {g.difficulty}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">{g.articles.length} 篇文章 · {durationMin} 分钟</p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-slate-400" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </main>
   );
 }
