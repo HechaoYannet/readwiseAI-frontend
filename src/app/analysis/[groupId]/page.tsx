@@ -75,8 +75,14 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
     return { ...mock, group_id: groupId, status: 'completed' as const };
   }, [groupId]);
 
-  const historicalGroup = store.trainingHistory?.find((g) => g.group_id === groupId);
-  const group = (store.currentGroup?.group_id === groupId ? store.currentGroup : historicalGroup) ?? mockGroup;
+  const historicalGroup = useMemo(
+    () => store.trainingHistory?.find((g) => g.group_id === groupId),
+    [store.trainingHistory, groupId],
+  );
+  const group = useMemo(
+    () => (store.currentGroup?.group_id === groupId ? store.currentGroup : historicalGroup) ?? mockGroup,
+    [store.currentGroup, historicalGroup, mockGroup, groupId],
+  );
 
   const article = group.articles[articleTab];
   const paragraphs = article.content.split('\n\n').filter(Boolean);
