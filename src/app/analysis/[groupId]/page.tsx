@@ -9,6 +9,10 @@ import { useTrainingStore } from '@/lib/store';
 import { createMockTrainingGroup } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 
+const AI_STUB_RESPONSE = '功能开发中，敬请期待！AI 分析将在后续版本上线。';
+const LONG_SENTENCE_MIN_WORDS = 15;
+const LONG_SENTENCE_MAX_COUNT = 3;
+
 interface AnalysisPageProps {
   params: Promise<{ groupId: string }>;
 }
@@ -17,8 +21,8 @@ function extractLongSentences(content: string): string[] {
   return content
     .split(/[.!?]/)
     .map((s) => s.trim())
-    .filter((s) => s.split(' ').length > 15)
-    .slice(0, 3);
+    .filter((s) => s.split(' ').length > LONG_SENTENCE_MIN_WORDS)
+    .slice(0, LONG_SENTENCE_MAX_COUNT);
 }
 
 function LongSentenceItem({ sentence, onAsk }: { sentence: string; onAsk: (t: string) => void }) {
@@ -28,7 +32,7 @@ function LongSentenceItem({ sentence, onAsk }: { sentence: string; onAsk: (t: st
       <p className="text-xs text-slate-700 leading-relaxed italic">&ldquo;{sentence}&rdquo;</p>
       {expanded && (
         <div className="space-y-1 text-xs text-slate-500">
-          <p>功能开发中，AI 分析将在后续版本上线。</p>
+          <p>{AI_STUB_RESPONSE}</p>
         </div>
       )}
       <div className="flex gap-1.5 flex-wrap">
@@ -114,7 +118,7 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
     setChatMessages((prev) => [
       ...prev,
       { role: 'user', text: chatInput },
-      { role: 'bot', text: '功能开发中，敬请期待！AI 分析将在后续版本上线。' },
+      { role: 'bot', text: AI_STUB_RESPONSE },
     ]);
     setChatInput('');
   }

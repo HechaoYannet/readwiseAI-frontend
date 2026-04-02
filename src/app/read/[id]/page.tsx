@@ -15,6 +15,7 @@ import type { ParagraphTiming, TrainingQuestion } from '@/types/training';
 const MIN_SPEED_SCORE = 200;
 const BASE_SPEED_SCORE = 500;
 const SPEED_PENALTY_PER_MINUTE = 5;
+const PARAGRAPH_INTERSECTION_THRESHOLD = 0.3; // fraction of paragraph visible to count as "reading"
 
 interface ReadPageProps {
   params: Promise<{ id: string }>;
@@ -140,7 +141,7 @@ export default function ReadPage({ params }: ReadPageProps) {
           }
         });
       },
-      { threshold: 0.3 },
+      { threshold: PARAGRAPH_INTERSECTION_THRESHOLD },
     );
 
     refs.forEach((ref) => { if (ref) observer.observe(ref); });
