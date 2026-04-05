@@ -7,6 +7,7 @@ import { BookOpen, ChevronRight, Loader2, PlayCircle, RotateCcw } from 'lucide-r
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTrainingStore } from '@/lib/store';
+import { useAuthStore } from '@/lib/auth-store';
 import { generateTrainingGroup } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +29,7 @@ const topics = [
 export default function TrainPage() {
   const router = useRouter();
   const { currentGroup, startGroup, resetGroup, trainingHistory } = useTrainingStore();
+  const { token } = useAuthStore();
 
   const [difficulty, setDifficulty] = useState('L2');
   const [topic, setTopic] = useState<string | null>(null);
@@ -40,7 +42,7 @@ export default function TrainPage() {
     setLoading(true);
     setError(null);
     try {
-      const group = await generateTrainingGroup(difficulty, topic ?? undefined);
+      const group = await generateTrainingGroup(token ?? '', difficulty, topic ?? undefined);
       startGroup(group);
       router.push(`/read/${group.group_id}-0`);
     } catch {
