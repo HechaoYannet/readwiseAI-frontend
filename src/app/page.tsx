@@ -85,6 +85,7 @@ export default function Home() {
         request_type: 'qa',
         query_type: 'free',
         content: userMsg,
+        session_id: '',
       });
       setAiMessages((prev) => [...prev, { role: 'bot', text: reply }]);
     } catch {

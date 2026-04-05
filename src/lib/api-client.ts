@@ -297,7 +297,7 @@ export async function getUserStats(token: string): Promise<UserStats> {
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface SingleAttemptPayload {
-  session_id?: string;
+  session_id: string;
   request_type: 'attempt';
   paragraph: string;
   question_text: string;
@@ -309,7 +309,7 @@ export interface SingleAttemptPayload {
 }
 
 export interface QAPayload {
-  session_id?: string;
+  session_id: string;
   request_type: 'qa';
   query_type: 'word' | 'sentence' | 'grammar' | 'translate' | 'free';
   content: string;
@@ -317,7 +317,7 @@ export interface QAPayload {
 }
 
 export interface TrainingSetPayload {
-  session_id?: string;
+  session_id: string;
   request_type: 'training_set';
   user_level?: string;
 }
@@ -350,25 +350,39 @@ async function pollResult(token: string, requestId: string, maxRetries = 40, int
 
 // ── Mapping helpers for training_set API response ────────────────────────────
 
-function mapApiArticle(raw: Record<string, unknown>, index: number, difficulty: string): TrainingArticle {
-  const title = (raw.title as string | undefined) ?? `Article ${index + 1}`;
-  const content = (raw.content as string | undefined) ?? '';
-  const wordCount = (raw.word_count as number | undefined) ?? content.split(/\s+/).filter(Boolean).length;
-  const genre = (raw.genre as string | undefined) ?? 'general';
-  const diff = (raw.difficulty as string | undefined) ?? difficulty;
+// Maps a raw article object (from dyn_c${i}.article) together with its raw questions
+// (from dyn_q${i}.questions) into a TrainingArticle.
+function mapApiArticle(
+  rawArticle: Record<string, unknown>,
+  rawQuestions: Record<string, unknown>[],
+  index: number,
+  difficulty: string,
+): TrainingArticle {
+  const title = (rawArticle.title as string | undefined) ?? `Article ${index + 1}`;
+  const content = (rawArticle.content as string | undefined) ?? '';
+  const wordCount = (rawArticle.word_count as number | undefined) ?? content.split(/\s+/).filter(Boolean).length;
+  // API returns difficulty_actual / genre_actual; fall back to difficulty / genre for safety
+  const diff =
+    (rawArticle.difficulty_actual as string | undefined) ??
+    (rawArticle.difficulty as string | undefined) ??
+    difficulty;
+  const genre =
+    (rawArticle.genre_actual as string | undefined) ??
+    (rawArticle.genre as string | undefined) ??
+    'general';
 
-  const rawQuestions = (raw.questions as Record<string, unknown>[] | undefined) ?? [];
   const questions: TrainingQuestion[] = rawQuestions.map((q, qi) => ({
     question_id: (q.question_id as string | undefined) ?? `q_${index}_${qi}`,
     question_text: (q.question_text as string | undefined) ?? '',
     options: (q.options as { A: string; B: string; C: string; D: string } | undefined) ?? { A: '', B: '', C: '', D: '' },
     correct_answer: (q.correct_answer as string | undefined) ?? 'A',
+    // API uses "type"; fall back to "question_type" for compatibility
     question_type: (q.type as string | undefined) ?? (q.question_type as string | undefined) ?? 'detail',
     explanation: (q.explanation as string | undefined),
   }));
 
   return {
-    article_id: (raw.article_id as string | undefined) ?? `art_${index}`,
+    article_id: (rawArticle.article_id as string | undefined) ?? `art_${index}`,
     title,
     content,
     word_count: wordCount,
@@ -378,21 +392,27 @@ function mapApiArticle(raw: Record<string, unknown>, index: number, difficulty: 
   };
 }
 
+// Maps the completed training_set result (results field of GET /api/result) to a TrainingGroup.
+// API structure per frontend_follow.md §13.5:
+//   results["dyn_c1"] = { article: {...}, validation: {...}, metadata: {...} }
+//   results["dyn_q1"] = { questions: [...], metadata: {...} }
 function mapTrainingSetResult(results: Record<string, unknown>, difficulty: string, sessionId: string): TrainingGroup {
   const articles: TrainingArticle[] = [];
   for (let i = 1; i <= 4; i++) {
-    const articleKey = `dyn_c${i}`;
-    const questionKey = `dyn_q${i}`;
-    const rawArticle = results[articleKey] as Record<string, unknown> | undefined;
-    const rawQuestions = results[questionKey] as Record<string, unknown>[] | undefined;
+    const articleWrapper = results[`dyn_c${i}`] as Record<string, unknown> | undefined;
+    const questionWrapper = results[`dyn_q${i}`] as Record<string, unknown> | undefined;
 
+    // Extract the nested article object
+    const rawArticle = (articleWrapper?.article as Record<string, unknown> | undefined) ?? articleWrapper;
     if (!rawArticle) continue;
 
-    const articleWithQuestions: Record<string, unknown> = {
-      ...rawArticle,
-      questions: rawQuestions ?? (rawArticle.questions as unknown[]) ?? [],
-    };
-    articles.push(mapApiArticle(articleWithQuestions, i - 1, difficulty));
+    // Extract the questions array from the question wrapper
+    const rawQuestions =
+      (questionWrapper?.questions as Record<string, unknown>[] | undefined) ??
+      (rawArticle.questions as Record<string, unknown>[] | undefined) ??
+      [];
+
+    articles.push(mapApiArticle(rawArticle, rawQuestions, i - 1, difficulty));
   }
 
   return {
@@ -506,14 +526,29 @@ export async function submitAttemptDiagnosis(
 
         const result = await pollResult(token, initResp.request_id, 20, 2500);
         if (result.status === 'completed' && result.results) {
+          // API response structure per frontend_follow.md §13.1:
+          //   results.sub_001.diagnosis = { error_category, explanation, evidence_sentence, suggestion, confidence }
+          //   results.sub_001.similar_question = { paragraph, question, options, correct_answer, explanation }
           const sub = result.results.sub_001 as Record<string, unknown> | undefined;
-          const diag = sub?.diagnosis as Record<string, string> | undefined;
+          const diag = sub?.diagnosis as Record<string, unknown> | undefined;
+          const similarQ = sub?.similar_question as Record<string, unknown> | undefined;
           if (diag) {
             diagnosisMap[attempt.question_id] = {
-              error_category: diag.error_category ?? '解析错误',
-              evidence_sentence: diag.evidence_sentence ?? '',
-              fix_suggestion: diag.suggestion ?? diag.fix_suggestion ?? '',
+              error_category: (diag.error_category as string | undefined) ?? '解析错误',
+              evidence_sentence: (diag.evidence_sentence as string | undefined) ?? '',
+              // API field is "suggestion"; "fix_suggestion" kept for type compatibility
+              fix_suggestion: (diag.suggestion as string | undefined) ?? (diag.fix_suggestion as string | undefined) ?? '',
               similar_distractor: attempt.user_answer,
+              confidence: diag.confidence as number | undefined,
+              similar_question: similarQ && typeof similarQ.question === 'string'
+                ? {
+                    paragraph: (similarQ.paragraph as string | undefined) ?? '',
+                    question: similarQ.question,
+                    options: (similarQ.options as { A: string; B: string; C: string; D: string } | undefined) ?? { A: '', B: '', C: '', D: '' },
+                    correct_answer: (similarQ.correct_answer as string | undefined) ?? 'A',
+                    explanation: (similarQ.explanation as string | undefined) ?? '',
+                  }
+                : undefined,
             };
           }
         }
@@ -568,7 +603,54 @@ export async function submitQA(
     const result = await pollResult(token, initResp.request_id, 20, 2000);
     if (result.status === 'completed' && result.results) {
       const sub = result.results.sub_001 as Record<string, unknown> | undefined;
-      return (sub?.answer as string | undefined) ?? (sub?.content as string | undefined) ?? JSON.stringify(sub ?? result.results);
+      if (!sub) return 'AI 未返回结果，请重试';
+      // Parse per query_type per frontend_follow.md §13.4
+      switch (payload.query_type) {
+        case 'word': {
+          const basicMeaning = sub.basic_meaning as Record<string, unknown> | undefined;
+          const translation = (basicMeaning?.translation as string | undefined) ?? '';
+          const contextMeaning = sub.context_meaning as string | undefined;
+          const usageNotes = sub.usage_notes as string | undefined;
+          const parts = [translation];
+          if (contextMeaning) parts.push(`语境含义：${contextMeaning}`);
+          if (usageNotes) parts.push(`用法说明：${usageNotes}`);
+          return parts.filter(Boolean).join('\n') || '暂无释义';
+        }
+        case 'sentence': {
+          const translation = sub.translation as string | undefined;
+          const mainClause = sub.main_clause as string | undefined;
+          const structureAnalysis = sub.structure_analysis as string | undefined;
+          const keyPoints = sub.key_grammar_points as string[] | undefined;
+          const parts: string[] = [];
+          if (translation) parts.push(`译文：${translation}`);
+          if (mainClause) parts.push(`主干：${mainClause}`);
+          if (structureAnalysis) parts.push(`结构：${structureAnalysis}`);
+          if (keyPoints?.length) parts.push(`语法要点：${keyPoints.join('、')}`);
+          return parts.filter(Boolean).join('\n') || '暂无分析结果';
+        }
+        case 'grammar': {
+          const grammarPoint = sub.grammar_point as string | undefined;
+          const explanation = sub.explanation as string | undefined;
+          const examples = sub.examples as string[] | undefined;
+          const parts: string[] = [];
+          if (grammarPoint) parts.push(`语法点：${grammarPoint}`);
+          if (explanation) parts.push(explanation);
+          if (examples?.length) parts.push(`例句：${examples.join('；')}`);
+          return parts.filter(Boolean).join('\n') || '暂无语法解释';
+        }
+        case 'translate': {
+          const translation = sub.translation as string | undefined;
+          const notes = sub.notes as string | undefined;
+          const parts: string[] = [];
+          if (translation) parts.push(translation);
+          if (notes) parts.push(`注：${notes}`);
+          return parts.filter(Boolean).join('\n') || '暂无翻译结果';
+        }
+        case 'free':
+        default: {
+          return (sub.answer as string | undefined) ?? (sub.content as string | undefined) ?? '暂无回答';
+        }
+      }
     }
     if (result.status === 'failed') return `AI 分析失败：${result.error_log?.join(', ') ?? '未知错误'}`;
   } catch (e) {

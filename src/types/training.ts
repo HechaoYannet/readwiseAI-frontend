@@ -14,11 +14,21 @@ export interface QuestionAttempt {
   submit_time: number;
 }
 
+export interface SimilarQuestion {
+  paragraph: string;
+  question: string;
+  options: { A: string; B: string; C: string; D: string };
+  correct_answer: string;
+  explanation: string;
+}
+
 export interface DiagnosisResult {
   error_category: string;
   evidence_sentence: string;
   fix_suggestion: string;
   similar_distractor?: string;
+  confidence?: number;
+  similar_question?: SimilarQuestion;
 }
 
 export interface TrainingQuestion {
