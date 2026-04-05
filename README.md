@@ -180,10 +180,13 @@ NEXT_PUBLIC_API_URL=https://your-backend-api.com
 ```
 用户点击"开始训练"
     ↓
-POST /api/attempt { request_type: "training_set", user_level: "L2" }
+POST /api/attempt { request_type: "training_set", session_id: "session_xxx", user_level: "L2" }
     ↓ 返回 { request_id, session_id, status: "processing" }
     ↓ 轮询 GET /api/result/{request_id}（每 3 秒，最多 2 分钟）
-    ↓ status === "completed" → 解析 dyn_c1~dyn_c4（文章）+ dyn_q1~dyn_q4（题目）
+    ↓ status === "completed"
+    ↓ 解析 results["dyn_c1~dyn_c4"] → 每项的 .article 字段为文章对象
+    ↓ 解析 results["dyn_q1~dyn_q4"] → 每项的 .questions 字段为题目数组
+    ↓ 文章字段使用 difficulty_actual / genre_actual（非 difficulty / genre）
     ↓
 创建 TrainingGroup，存入 Zustand，跳转 /read/{session_id}-0
 ```
@@ -194,13 +197,32 @@ POST /api/attempt { request_type: "training_set", user_level: "L2" }
 用户完成训练，跳转 /analysis/{groupId}
     ↓
 对每道错题并发提交：
-POST /api/attempt { request_type: "attempt", paragraph, question_text, options,
-                    user_answer, correct_answer, time_spent }
+POST /api/attempt { request_type: "attempt", session_id, paragraph, question_text,
+                    options, user_answer, correct_answer, time_spent }
     ↓ 轮询 GET /api/result/{request_id}
-    ↓ status === "completed" → 读取 results.sub_001.diagnosis
+    ↓ status === "completed"
+    ↓ 读取 results.sub_001.diagnosis → { error_category, explanation（错因说明）,
+        evidence_sentence（原文证据）, suggestion（学习建议）, confidence }
+    ↓ 读取 results.sub_001.similar_question → 同类练习题（可选展示）
     ↓
 同步到 Zustand store.recordDiagnosis()，实时显示在错误分析卡片
 ```
+
+### AI 问答响应解析
+
+`submitQA()` 根据 `query_type` 解析不同的响应字段（均来自 `results.sub_001`）：
+
+| query_type | 响应字段 | 展示逻辑 |
+|-----------|---------|---------|
+| `word` | `basic_meaning.translation`, `context_meaning`, `usage_notes` | 词义 + 语境含义 + 用法说明 |
+| `sentence` | `translation`, `main_clause`, `structure_analysis`, `key_grammar_points` | 译文 + 主干 + 结构分析 |
+| `grammar` | `grammar_point`, `explanation`, `examples` | 语法点 + 解释 + 例句 |
+| `translate` | `translation`, `notes` | 译文 + 注释 |
+| `free` | `answer` | 自由回答文本 |
+
+### 重要：`session_id` 为必填字段
+
+`/api/attempt` 的所有请求类型（`attempt`、`qa`、`training_set`）均要求 Body 中包含 `session_id` 字段（不可省略，缺失返回 HTTP 422）。传空字符串 `""` 时服务端自动生成随机 ID。
 
 ---
 
