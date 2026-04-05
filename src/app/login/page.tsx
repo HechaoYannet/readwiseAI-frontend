@@ -505,7 +505,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <p className="mt-6 text-xs text-slate-400">© 2025 ReadWise AI · 仅限受邀用户使用</p>
+      <p className="mt-6 text-xs text-slate-400">© 2026 ReadWise AI · 仅限受邀用户使用</p>
     </div>
   );
 }
