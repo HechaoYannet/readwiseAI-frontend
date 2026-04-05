@@ -12,6 +12,7 @@ interface TrainingStore {
   currentGroup: TrainingGroup | null;
   currentArticleIndex: number;
   groupStartTime: number | null;
+  articleStartTime: number | null;
   answers: Record<string, AnswerRecord>;
   diagnosisResults: Record<string, DiagnosisResult>;
   powerScore: PowerScore | null;
@@ -34,6 +35,7 @@ export const useTrainingStore = create<TrainingStore>()(
       currentGroup: null,
       currentArticleIndex: 0,
       groupStartTime: null,
+      articleStartTime: null,
       answers: {},
       diagnosisResults: {},
       powerScore: null,
@@ -44,11 +46,12 @@ export const useTrainingStore = create<TrainingStore>()(
           currentGroup: group,
           currentArticleIndex: 0,
           groupStartTime: Date.now(),
+          articleStartTime: Date.now(),
           answers: {},
           diagnosisResults: {},
         }),
 
-      setCurrentArticle: (index) => set({ currentArticleIndex: index }),
+      setCurrentArticle: (index) => set({ currentArticleIndex: index, articleStartTime: Date.now() }),
 
       recordAnswer: (questionId, answer, timeSpent, startTime) =>
         set((state) => ({
@@ -86,7 +89,7 @@ export const useTrainingStore = create<TrainingStore>()(
           };
         });
 
-        const sessionStart = state.groupStartTime ?? Date.now();
+        const sessionStart = state.articleStartTime ?? state.groupStartTime ?? Date.now();
         const sessionEnd = Date.now();
         const session: ArticleSession = {
           article_id: article.article_id,
@@ -127,6 +130,7 @@ export const useTrainingStore = create<TrainingStore>()(
           currentGroup: null,
           currentArticleIndex: 0,
           groupStartTime: null,
+          articleStartTime: null,
           answers: {},
           diagnosisResults: {},
         }),
@@ -144,6 +148,7 @@ export const useTrainingStore = create<TrainingStore>()(
         currentGroup: state.currentGroup,
         currentArticleIndex: state.currentArticleIndex,
         groupStartTime: state.groupStartTime,
+        articleStartTime: state.articleStartTime,
         answers: state.answers,
         diagnosisResults: state.diagnosisResults,
         powerScore: state.powerScore,
