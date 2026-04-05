@@ -9,6 +9,7 @@ import PowerOrb from '@/components/home/power-orb';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTrainingStore } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
+import { getUserStats, submitQA } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import type { ModeCard } from '@/types/home';
 
@@ -49,31 +50,48 @@ const modeCards: ModeCard[] = [
 
 export default function Home() {
   const { currentGroup, powerScore } = useTrainingStore();
-  const { token, user } = useAuthStore();
+  const { token, user, stats, setStats } = useAuthStore();
   const router = useRouter();
   const hasInProgress = currentGroup?.status === 'in_progress';
-  const score = powerScore?.total ?? 368;
+  const score = powerScore?.total ?? stats?.latest_power ?? 0;
 
   const completedIdx = currentGroup?.sessions.filter((s) => s.status === 'completed').length ?? 0;
 
   const [showAiChat, setShowAiChat] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     if (!token) router.replace('/login');
   }, [token, router]);
 
+  // Refresh user stats on mount
+  useEffect(() => {
+    if (!token) return;
+    getUserStats(token).then(setStats).catch(() => {});
+  }, [token, setStats]);
+
   if (!token) return null;
 
-  function handleAiSend() {
-    if (!aiInput.trim()) return;
-    setAiMessages((prev) => [
-      ...prev,
-      { role: 'user', text: aiInput },
-      { role: 'bot', text: '功能开发中，敬请期待！' },
-    ]);
+  async function handleAiSend() {
+    if (!aiInput.trim() || aiLoading) return;
+    const userMsg = aiInput.trim();
     setAiInput('');
+    setAiMessages((prev) => [...prev, { role: 'user', text: userMsg }]);
+    setAiLoading(true);
+    try {
+      const reply = await submitQA(token!, {
+        request_type: 'qa',
+        query_type: 'free',
+        content: userMsg,
+      });
+      setAiMessages((prev) => [...prev, { role: 'bot', text: reply }]);
+    } catch {
+      setAiMessages((prev) => [...prev, { role: 'bot', text: '请求失败，请重试' }]);
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   return (
@@ -121,9 +139,18 @@ export default function Home() {
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-slate-600">
-          基于遗忘曲线，建议优先复习{' '}
-          <span className="font-semibold text-slate-900">4</span> 个知识点，预计耗时
-          <span className="font-semibold text-slate-900"> 18 分钟</span>。
+          {stats?.due_for_review && stats.due_for_review > 0 ? (
+            <>
+              基于遗忘曲线，建议优先复习{' '}
+              <span className="font-semibold text-slate-900">{stats.due_for_review}</span> 道错题。
+              {' '}
+              <Link href="/review" className="text-sky-600 underline hover:text-sky-700">立即复习</Link>
+            </>
+          ) : (
+            <>
+              今日暂无待复习题目，开始训练积累更多错题吧。
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -159,16 +186,18 @@ export default function Home() {
                 type="text"
                 value={aiInput}
                 onChange={(e) => setAiInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAiSend(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !aiLoading) void handleAiSend(); }}
                 placeholder="输入问题..."
                 className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-sky-400"
+                disabled={aiLoading}
               />
               <button
                 type="button"
-                onClick={handleAiSend}
-                className="rounded-lg bg-sky-500 px-2 py-1.5 text-white text-xs hover:bg-sky-600"
+                onClick={() => void handleAiSend()}
+                disabled={aiLoading}
+                className="rounded-lg bg-sky-500 px-2 py-1.5 text-white text-xs hover:bg-sky-600 disabled:opacity-50"
               >
-                发送
+                {aiLoading ? '...' : '发送'}
               </button>
             </div>
           </div>

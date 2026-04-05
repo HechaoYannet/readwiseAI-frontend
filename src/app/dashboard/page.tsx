@@ -1,10 +1,14 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Gauge, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useTrainingStore } from '@/lib/store';
+import { useAuthStore } from '@/lib/auth-store';
+import { getPowerHistory } from '@/lib/api-client';
+import type { PowerHistoryResponse } from '@/lib/api-client';
 
 const subScoreLabels: Record<string, string> = {
   vocabulary: '词汇力',
@@ -14,34 +18,36 @@ const subScoreLabels: Record<string, string> = {
   endurance: '持久力',
 };
 
-const trendData = [
-  { day: '周一', score: 320 },
-  { day: '周二', score: 338 },
-  { day: '周三', score: 345 },
-  { day: '周四', score: 355 },
-  { day: '周五', score: 362 },
-  { day: '周六', score: 370 },
-  { day: '今天', score: 0 },
-];
-
 export default function DashboardPage() {
   const { powerScore, currentGroup } = useTrainingStore();
+  const { token } = useAuthStore();
+  const [powerHistory, setPowerHistory] = useState<PowerHistoryResponse | null>(null);
 
-  const total = powerScore?.total ?? 368;
+  useEffect(() => {
+    if (!token) return;
+    getPowerHistory(token, 7).then(setPowerHistory).catch(() => {});
+  }, [token]);
+
+  const total = powerScore?.total ?? powerHistory?.latest_score ?? 0;
   const maxScore = 500;
 
   const subScores = {
-    vocabulary: powerScore?.vocabulary ?? 72,
-    grammar: powerScore?.grammar ?? 68,
-    inference: powerScore?.inference ?? 76,
-    speed: powerScore?.speed ?? 80,
-    endurance: powerScore?.endurance ?? 65,
+    vocabulary: powerScore?.vocabulary ?? 0,
+    grammar: powerScore?.grammar ?? 0,
+    inference: powerScore?.inference ?? 0,
+    speed: powerScore?.speed ?? 0,
+    endurance: powerScore?.endurance ?? 0,
   };
 
-  const todayScore = powerScore?.total != null ? powerScore.total : trendData[trendData.length - 1].score;
-  const displayTrend = trendData.map((d, i) =>
-    i === trendData.length - 1 ? { ...d, score: todayScore } : d,
-  );
+  const historyEntries = powerHistory?.history ?? [];
+  const displayTrend = historyEntries.length > 0
+    ? historyEntries.slice(-7).map((h) => ({
+        day: new Date(h.recorded_at ?? '').toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }),
+        score: h.score,
+      }))
+    : [
+        { day: '暂无', score: total },
+      ];
 
   const recentGroups = currentGroup ? [currentGroup] : [];
 
@@ -60,15 +66,20 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Progress value={(total / maxScore) * 100} />
-            <div className="space-y-2">
-              {Object.entries(subScores).map(([key, val]) => (
-                <div key={key} className="flex items-center gap-3 text-sm">
-                  <span className="w-16 shrink-0 text-slate-500">{subScoreLabels[key]}</span>
-                  <Progress value={val} className="flex-1 h-2" />
-                  <span className="w-8 text-right text-slate-700 font-medium">{val}</span>
-                </div>
-              ))}
-            </div>
+            {Object.values(subScores).some((v) => v > 0) && (
+              <div className="space-y-2">
+                {Object.entries(subScores).map(([key, val]) => (
+                  <div key={key} className="flex items-center gap-3 text-sm">
+                    <span className="w-16 shrink-0 text-slate-500">{subScoreLabels[key]}</span>
+                    <Progress value={val} className="flex-1 h-2" />
+                    <span className="w-8 text-right text-slate-700 font-medium">{val}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {Object.values(subScores).every((v) => v === 0) && (
+              <p className="text-sm text-slate-400">完成训练后将显示各维度评分</p>
+            )}
           </CardContent>
         </Card>
 
@@ -76,25 +87,28 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-[#1E3A5F]">
               <TrendingUp className="h-5 w-5 text-emerald-500" />
-              7 天趋势
+              战力趋势
             </CardTitle>
             <CardDescription>近期战力变化</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-1">
-              {displayTrend.map((d) => (
-                <div key={d.day} className="flex items-center gap-3 text-sm">
-                  <span className="w-10 shrink-0 text-slate-400">{d.day}</span>
+              {displayTrend.map((d, i) => (
+                <div key={i} className="flex items-center gap-3 text-sm">
+                  <span className="w-14 shrink-0 text-slate-400 text-xs">{d.day}</span>
                   <div className="flex-1 rounded-full bg-slate-100 h-2 overflow-hidden">
                     <div
                       className="h-full rounded-full bg-sky-400 transition-all"
-                      style={{ width: `${(d.score / maxScore) * 100}%` }}
+                      style={{ width: `${Math.min(100, (d.score / maxScore) * 100)}%` }}
                     />
                   </div>
-                  <span className="w-8 text-right text-slate-600 font-medium">{d.score || '-'}</span>
+                  <span className="w-10 text-right text-slate-600 font-medium text-sm">{d.score || '-'}</span>
                 </div>
               ))}
             </div>
+            {historyEntries.length === 0 && (
+              <p className="mt-3 text-xs text-slate-400">完成训练后将显示战力历史</p>
+            )}
           </CardContent>
         </Card>
       </section>

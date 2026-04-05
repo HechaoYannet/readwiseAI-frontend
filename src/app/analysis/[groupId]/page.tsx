@@ -2,14 +2,15 @@
 
 import { use, useState, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, MessageCircle, Send } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, MessageCircle, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTrainingStore } from '@/lib/store';
+import { useAuthStore } from '@/lib/auth-store';
 import { createMockTrainingGroup } from '@/lib/mock-data';
+import { addTrainingRecord, addMistake, addPowerRecord, submitQA, submitAttemptDiagnosis } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
-const AI_STUB_RESPONSE = '功能开发中，敬请期待！AI 分析将在后续版本上线。';
 const LONG_SENTENCE_MIN_WORDS = 15;
 const LONG_SENTENCE_MAX_COUNT = 3;
 
@@ -25,30 +26,80 @@ function extractLongSentences(content: string): string[] {
     .slice(0, LONG_SENTENCE_MAX_COUNT);
 }
 
-function LongSentenceItem({ sentence, onAsk }: { sentence: string; onAsk: (t: string) => void }) {
+function LongSentenceItem({ sentence, onAsk, token, sessionId }: {
+  sentence: string;
+  onAsk: (t: string) => void;
+  token: string | null;
+  sessionId: string;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [translation, setTranslation] = useState<string | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [parsed, setParsed] = useState<string | null>(null);
+
+  async function handleTranslate() {
+    if (translation) { setExpanded(true); return; }
+    setTranslating(true);
+    setExpanded(true);
+    try {
+      const result = await submitQA(token ?? '', {
+        request_type: 'qa',
+        query_type: 'translate',
+        content: sentence,
+        session_id: sessionId,
+      });
+      setTranslation(result);
+    } catch {
+      setTranslation('翻译失败，请重试');
+    } finally {
+      setTranslating(false);
+    }
+  }
+
+  async function handleParse() {
+    if (parsed) { setExpanded(true); return; }
+    setParsing(true);
+    setExpanded(true);
+    try {
+      const result = await submitQA(token ?? '', {
+        request_type: 'qa',
+        query_type: 'sentence',
+        content: sentence,
+        session_id: sessionId,
+      });
+      setParsed(result);
+    } catch {
+      setParsed('解析失败，请重试');
+    } finally {
+      setParsing(false);
+    }
+  }
+
   return (
     <div className="rounded-lg border border-slate-200 p-3 space-y-2">
       <p className="text-xs text-slate-700 leading-relaxed italic">&ldquo;{sentence}&rdquo;</p>
       {expanded && (
-        <div className="space-y-1 text-xs text-slate-500">
-          <p>{AI_STUB_RESPONSE}</p>
+        <div className="space-y-1 text-xs text-slate-600 border-t border-slate-100 pt-2">
+          {(translating || parsing) && <Loader2 className="h-4 w-4 animate-spin text-sky-500" />}
+          {translation && <p><span className="font-medium text-slate-500">译文：</span>{translation}</p>}
+          {parsed && <p><span className="font-medium text-slate-500">分析：</span>{parsed}</p>}
         </div>
       )}
       <div className="flex gap-1.5 flex-wrap">
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={handleParse}
           className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100"
         >
-          {expanded ? '收起' : '拆解主干'}
+          {parsing ? <Loader2 className="h-3 w-3 animate-spin" /> : (expanded && parsed ? '收起' : '拆解主干')}
         </button>
         <button
           type="button"
-          onClick={() => setExpanded(true)}
+          onClick={handleTranslate}
           className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100"
         >
-          翻译
+          {translating ? <Loader2 className="h-3 w-3 animate-spin" /> : '翻译'}
         </button>
         <button
           type="button"
@@ -65,15 +116,18 @@ function LongSentenceItem({ sentence, onAsk }: { sentence: string; onAsk: (t: st
 export default function AnalysisPage({ params }: AnalysisPageProps) {
   const { groupId } = use(params);
   const store = useTrainingStore();
+  const { token } = useAuthStore();
 
   const [articleTab, setArticleTab] = useState(0);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [diagnosisLoading, setDiagnosisLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
 
-  // Bootstrap mock group if nothing in store (stable reference via useMemo)
   const mockGroup = useMemo(() => {
     const mock = createMockTrainingGroup();
     return { ...mock, group_id: groupId, status: 'completed' as const };
@@ -113,14 +167,107 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
   const powerScore = store.powerScore;
   const powerDelta = powerScore ? `+${Math.max(0, Math.round((powerScore.total - 300) / 10))}` : '+?';
 
-  function handleChat() {
-    if (!chatInput.trim()) return;
-    setChatMessages((prev) => [
-      ...prev,
-      { role: 'user', text: chatInput },
-      { role: 'bot', text: AI_STUB_RESPONSE },
-    ]);
+  // Save training data to Memory API after training completes
+  useEffect(() => {
+    if (saved || !token || group.status !== 'completed') return;
+    setSaved(true);
+
+    const doSave = async () => {
+      try {
+        // Save training record
+        await addTrainingRecord(token, {
+          session_id: group.group_id,
+          article_count: group.articles.length,
+          question_count: totalQuestions,
+          correct_count: correctCount,
+          total_time_seconds: Math.round(durationMs / 1000),
+          difficulty: group.difficulty,
+          score: accuracy,
+        });
+
+        // Save wrong answers as mistakes + get diagnoses
+        setDiagnosisLoading(true);
+        for (const art of group.articles) {
+          const artAnswers = art.questions.map((q) => ({
+            question_id: q.question_id,
+            user_answer: getUserAnswer(q.question_id),
+            is_correct: isCorrect(q.question_id, q.correct_answer),
+            time_spent: allAnswers[q.question_id]?.timeSpent ?? 0,
+            start_time: allAnswers[q.question_id]?.startTime ?? 0,
+            submit_time: Date.now(),
+          }));
+
+          const wrongAnswers = artAnswers.filter((a) => !a.is_correct && a.user_answer);
+          if (wrongAnswers.length === 0) continue;
+
+          // Get diagnoses from backend
+          const diagnosisMap = await submitAttemptDiagnosis(token, group.group_id, art, artAnswers);
+          for (const [qId, diag] of Object.entries(diagnosisMap)) {
+            store.recordDiagnosis(qId, diag);
+          }
+
+          // Save mistakes
+          for (const attempt of wrongAnswers) {
+            const question = art.questions.find((q) => q.question_id === attempt.question_id);
+            if (!question) continue;
+            const mistakeId = `mis_${group.group_id}_${attempt.question_id}`;
+            try {
+              await addMistake(token, {
+                mistake_id: mistakeId,
+                question_text: question.question_text,
+                options: question.options,
+                correct_answer: question.correct_answer,
+                user_answer: attempt.user_answer,
+                article_excerpt: art.content.slice(0, 200),
+                error_category: diagnosisMap[attempt.question_id]?.error_category,
+                explanation: diagnosisMap[attempt.question_id]?.evidence_sentence,
+                question_type: question.question_type,
+                difficulty: art.difficulty,
+              });
+            } catch {
+              // Non-critical; continue
+            }
+          }
+        }
+        setDiagnosisLoading(false);
+
+        // Save power score
+        if (powerScore) {
+          await addPowerRecord(
+            token,
+            powerScore.total,
+            `完成训练，正确率 ${accuracy}%，难度 ${group.difficulty}`,
+          );
+        }
+      } catch {
+        // Non-critical; silently continue
+        setDiagnosisLoading(false);
+      }
+    };
+
+    void doSave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleChat() {
+    if (!chatInput.trim() || chatLoading) return;
+    const userMsg = chatInput.trim();
     setChatInput('');
+    setChatMessages((prev) => [...prev, { role: 'user', text: userMsg }]);
+    setChatLoading(true);
+    try {
+      const reply = await submitQA(token ?? '', {
+        request_type: 'qa',
+        query_type: 'free',
+        content: userMsg,
+        session_id: group.group_id,
+      });
+      setChatMessages((prev) => [...prev, { role: 'bot', text: reply }]);
+    } catch {
+      setChatMessages((prev) => [...prev, { role: 'bot', text: '请求失败，请重试' }]);
+    } finally {
+      setChatLoading(false);
+    }
   }
 
   function handleTextSelection() {
@@ -178,6 +325,13 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
         </div>
       </header>
 
+      {diagnosisLoading && (
+        <div className="flex items-center gap-2 rounded-lg border border-sky-100 bg-sky-50 px-4 py-2 text-sm text-sky-700">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          正在获取 AI 错因分析，请稍候...
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-5">
         {/* Left: article + error analysis + long sentence analysis */}
         <div className="space-y-4 lg:col-span-3">
@@ -197,6 +351,7 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
             <CardHeader>
               <CardTitle className="text-base text-[#1E3A5F]">
                 错误分析 ({wrongQuestions.length} 题)
+                {diagnosisLoading && <Loader2 className="ml-2 inline h-4 w-4 animate-spin text-sky-500" />}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -217,13 +372,15 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
                           正确答案：{q.correct_answer} · {q.options[q.correct_answer as keyof typeof q.options]}
                         </span>
                       </div>
-                      {diag && (
+                      {diag ? (
                         <div className="space-y-1 text-xs text-slate-600 border-t border-red-100 pt-2">
                           <p><span className="font-semibold">错误类型：</span>{diag.error_category}</p>
                           <p><span className="font-semibold">证据句：</span>{diag.evidence_sentence}</p>
                           <p><span className="font-semibold">修复建议：</span>{diag.fix_suggestion}</p>
                         </div>
-                      )}
+                      ) : diagnosisLoading ? (
+                        <p className="text-xs text-slate-400">AI 分析中...</p>
+                      ) : null}
                     </div>
                   );
                 })
@@ -244,8 +401,10 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
                   <LongSentenceItem
                     key={i}
                     sentence={sentence}
+                    token={token}
+                    sessionId={group.group_id}
                     onAsk={(text) => {
-                      setChatInput(`提问[${text}]`);
+                      setChatInput(`请分析这个句子：${text}`);
                       setTimeout(() => chatInputRef.current?.focus(), 100);
                     }}
                   />
@@ -350,13 +509,19 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
             <CardContent className="flex flex-col gap-2">
               <div className="rounded-lg bg-slate-50 p-3 min-h-24 max-h-40 overflow-y-auto space-y-2 text-sm">
                 {chatMessages.length === 0 && (
-                  <p className="text-slate-400 text-xs">输入问题，AI 助手将帮助分析错误原因...</p>
+                  <p className="text-slate-400 text-xs">输入问题，AI 助手将帮助分析错误原因、解释单词、翻译句子...</p>
                 )}
                 {chatMessages.map((m, i) => (
                   <div key={i} className={cn('rounded px-2 py-1 text-xs', m.role === 'user' ? 'bg-sky-100 text-sky-800 ml-4' : 'bg-white border border-slate-200 text-slate-700')}>
                     {m.text}
                   </div>
                 ))}
+                {chatLoading && (
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    AI 思考中...
+                  </div>
+                )}
                 <div ref={chatEndRef} />
               </div>
               <div className="flex gap-2">
@@ -365,12 +530,13 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleChat()}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !chatLoading) void handleChat(); }}
                   placeholder="提问..."
                   className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
+                  disabled={chatLoading}
                 />
-                <Button size="sm" onClick={handleChat} className="shrink-0">
-                  <Send className="h-4 w-4" />
+                <Button size="sm" onClick={() => void handleChat()} className="shrink-0" disabled={chatLoading}>
+                  {chatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
               </div>
             </CardContent>
@@ -392,12 +558,10 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
             type="button"
             className="px-2 py-1 rounded hover:bg-slate-700"
             onClick={() => {
-              setChatMessages((prev) => [
-                ...prev,
-                { role: 'user', text: `翻译：${selection.text}` },
-                { role: 'bot', text: '翻译功能开发中，敬请期待！' },
-              ]);
+              const text = selection.text;
               setSelection(null);
+              setChatInput(`翻译：${text}`);
+              setTimeout(() => void handleChat(), 100);
             }}
           >
             翻译
@@ -406,7 +570,7 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
             type="button"
             className="px-2 py-1 rounded hover:bg-slate-700"
             onClick={() => {
-              setChatInput(`提问[${selection.text}]`);
+              setChatInput(`请分析这段文字：${selection.text}`);
               setSelection(null);
               setTimeout(() => chatInputRef.current?.focus(), 100);
             }}
@@ -418,3 +582,4 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
     </main>
   );
 }
+
