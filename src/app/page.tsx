@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { BookOpenCheck, Gauge, Lightbulb, MessageCircle, Settings, Timer, Zap, ChevronRight } from 'lucide-react';
 import ModeCardItem from '@/components/home/mode-card';
 import PowerOrb from '@/components/home/power-orb';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTrainingStore } from '@/lib/store';
+import { useAuthStore } from '@/lib/auth-store';
 import { cn } from '@/lib/utils';
 import type { ModeCard } from '@/types/home';
 
@@ -47,6 +49,8 @@ const modeCards: ModeCard[] = [
 
 export default function Home() {
   const { currentGroup, powerScore } = useTrainingStore();
+  const { token, user } = useAuthStore();
+  const router = useRouter();
   const hasInProgress = currentGroup?.status === 'in_progress';
   const score = powerScore?.total ?? 368;
 
@@ -55,6 +59,12 @@ export default function Home() {
   const [showAiChat, setShowAiChat] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
+
+  useEffect(() => {
+    if (!token) router.replace('/login');
+  }, [token, router]);
+
+  if (!token) return null;
 
   function handleAiSend() {
     if (!aiInput.trim()) return;
@@ -71,7 +81,7 @@ export default function Home() {
       <header className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm text-slate-500">ReadWise AI</p>
-          <h1 className="text-2xl font-bold text-[#1E3A5F]">你好，同学</h1>
+          <h1 className="text-2xl font-bold text-[#1E3A5F]">你好，{user?.username ?? '同学'}</h1>
         </div>
         <div className="flex items-center gap-3">
           <PowerOrb score={score} />

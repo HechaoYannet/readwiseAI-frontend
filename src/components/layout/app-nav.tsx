@@ -2,18 +2,24 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, Gauge, Home, Settings } from 'lucide-react';
+import { BookOpen, Gauge, Home, Settings, UserRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/', label: '首页', icon: Home },
   { href: '/train', label: '训练', icon: BookOpen },
   { href: '/dashboard', label: '仪表盘', icon: Gauge },
+  { href: '/profile', label: '我的', icon: UserRound },
   { href: '/settings', label: '设置', icon: Settings },
 ];
 
+// Routes where the bottom nav should be hidden
+const HIDDEN_ROUTES = ['/login'];
+
 export default function AppNav() {
   const pathname = usePathname();
+
+  if (HIDDEN_ROUTES.includes(pathname)) return null;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur-sm">
@@ -40,3 +46,4 @@ export default function AppNav() {
     </nav>
   );
 }
+
