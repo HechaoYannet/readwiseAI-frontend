@@ -55,7 +55,7 @@ export default function SettingsPage() {
     if (user) {
       setUsername(user.username);
       setExamRegion(user.exam_region || EXAM_REGIONS[0]);
-      setGrade(user.grade || GRADES[2]);
+      setGrade(user.grade || '高三');
       setSchool(user.school || '');
     }
   }, [token, user, router]);

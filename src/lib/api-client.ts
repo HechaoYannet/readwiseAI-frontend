@@ -15,6 +15,16 @@ function authHeaders(token: string): HeadersInit {
   };
 }
 
+async function extractApiError(res: Response, fallback: string): Promise<never> {
+  try {
+    const body = await res.json() as { detail?: string; message?: string };
+    throw new Error(body.detail ?? body.message ?? fallback);
+  } catch (e) {
+    if (e instanceof Error && e.message !== fallback) throw e;
+    throw new Error(fallback);
+  }
+}
+
 export interface LoginResponse {
   user_id: string;
   username: string;
@@ -82,8 +92,7 @@ export async function registerUser(payload: RegisterPayload): Promise<LoginRespo
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string };
-    throw new Error(err.detail ?? '注册失败，请重试');
+    await extractApiError(res, '注册失败，请重试');
   }
   return res.json() as Promise<LoginResponse>;
 }
@@ -119,8 +128,7 @@ export async function loginUser(loginId: string, password: string): Promise<Logi
     body: JSON.stringify({ login_id: loginId, password }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string };
-    throw new Error(err.detail ?? '用户名或密码错误');
+    await extractApiError(res, '用户名或密码错误');
   }
   return res.json() as Promise<LoginResponse>;
 }
@@ -186,8 +194,7 @@ export async function updateMe(token: string, payload: UpdateMePayload): Promise
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string };
-    throw new Error(err.detail ?? '更新失败，请重试');
+    await extractApiError(res, '更新失败，请重试');
   }
   return res.json() as Promise<UserProfile>;
 }
@@ -206,8 +213,7 @@ export async function changePassword(token: string, payload: ChangePasswordPaylo
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string };
-    throw new Error(err.detail ?? '密码修改失败');
+    await extractApiError(res, '密码修改失败');
   }
   return res.json() as Promise<{ message: string }>;
 }

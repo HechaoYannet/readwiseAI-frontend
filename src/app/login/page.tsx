@@ -47,7 +47,7 @@ export default function LoginPage() {
   const [regPwd, setRegPwd] = useState('');
   const [regConfirmPwd, setRegConfirmPwd] = useState('');
   const [examRegion, setExamRegion] = useState(EXAM_REGIONS[0]);
-  const [grade, setGrade] = useState(GRADES[2]);
+  const [grade, setGrade] = useState('高三');
   const [school, setSchool] = useState('');
 
   // ── Hidden admin login ───────────────────────────────────────────────────
@@ -347,6 +347,7 @@ export default function LoginPage() {
                     value={inviteCode}
                     onChange={(e) => { setInviteCode(e.target.value.toUpperCase()); setInviteValid(null); }}
                     placeholder="XXXXXXXX"
+                    aria-describedby="invite-code-hint"
                     className={cn(
                       'flex-1 font-mono tracking-wider',
                       inviteValid === true && 'border-emerald-400 ring-2 ring-emerald-400/20',
@@ -367,6 +368,7 @@ export default function LoginPage() {
                 </div>
                 {inviteValid === true && <p className="text-xs text-emerald-600">✓ 邀请码有效</p>}
                 {inviteValid === false && <p className="text-xs text-red-500">✗ 邀请码无效或已使用</p>}
+                <p id="invite-code-hint" className="text-xs text-slate-400 sr-only">输入将自动转为大写</p>
               </div>
 
               {/* Username */}
