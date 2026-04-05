@@ -42,7 +42,9 @@ export default function DashboardPage() {
   const historyEntries = powerHistory?.history ?? [];
   const displayTrend = historyEntries.length > 0
     ? historyEntries.slice(-7).map((h) => ({
-        day: new Date(h.recorded_at ?? '').toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }),
+        day: h.recorded_at
+          ? new Date(h.recorded_at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+          : '—',
         score: h.score,
       }))
     : [

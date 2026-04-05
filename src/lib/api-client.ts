@@ -1,5 +1,5 @@
 import { createMockTrainingGroup } from './mock-data';
-import type { TrainingGroup, DiagnosisResult, TrainingQuestion, QuestionAttempt } from '@/types/training';
+import type { TrainingGroup, DiagnosisResult, TrainingQuestion, QuestionAttempt, TrainingArticle } from '@/types/training';
 import type { UserProfile, UserStats } from './auth-store';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
@@ -350,7 +350,7 @@ async function pollResult(token: string, requestId: string, maxRetries = 40, int
 
 // ── Mapping helpers for training_set API response ────────────────────────────
 
-function mapApiArticle(raw: Record<string, unknown>, index: number, difficulty: string): import('@/types/training').TrainingArticle {
+function mapApiArticle(raw: Record<string, unknown>, index: number, difficulty: string): TrainingArticle {
   const title = (raw.title as string | undefined) ?? `Article ${index + 1}`;
   const content = (raw.content as string | undefined) ?? '';
   const wordCount = (raw.word_count as number | undefined) ?? content.split(/\s+/).filter(Boolean).length;
@@ -358,7 +358,7 @@ function mapApiArticle(raw: Record<string, unknown>, index: number, difficulty: 
   const diff = (raw.difficulty as string | undefined) ?? difficulty;
 
   const rawQuestions = (raw.questions as Record<string, unknown>[] | undefined) ?? [];
-  const questions: import('@/types/training').TrainingQuestion[] = rawQuestions.map((q, qi) => ({
+  const questions: TrainingQuestion[] = rawQuestions.map((q, qi) => ({
     question_id: (q.question_id as string | undefined) ?? `q_${index}_${qi}`,
     question_text: (q.question_text as string | undefined) ?? '',
     options: (q.options as { A: string; B: string; C: string; D: string } | undefined) ?? { A: '', B: '', C: '', D: '' },
@@ -379,7 +379,7 @@ function mapApiArticle(raw: Record<string, unknown>, index: number, difficulty: 
 }
 
 function mapTrainingSetResult(results: Record<string, unknown>, difficulty: string, sessionId: string): TrainingGroup {
-  const articles: import('@/types/training').TrainingArticle[] = [];
+  const articles: TrainingArticle[] = [];
   for (let i = 1; i <= 4; i++) {
     const articleKey = `dyn_c${i}`;
     const questionKey = `dyn_q${i}`;
@@ -473,7 +473,7 @@ function buildMockDiagnosis(questions: TrainingQuestion[], attempts: QuestionAtt
 export async function submitAttemptDiagnosis(
   token: string,
   sessionId: string,
-  article: import('@/types/training').TrainingArticle,
+  article: TrainingArticle,
   attempts: QuestionAttempt[],
 ): Promise<Record<string, DiagnosisResult>> {
   const questions = article.questions;

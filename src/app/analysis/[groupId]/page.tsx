@@ -123,7 +123,6 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
-  const [saved, setSaved] = useState(false);
   const [diagnosisLoading, setDiagnosisLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -167,50 +166,59 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
   const powerScore = store.powerScore;
   const powerDelta = powerScore ? `+${Math.max(0, Math.round((powerScore.total - 300) / 10))}` : '+?';
 
-  // Save training data to Memory API after training completes
+  // Save training data to Memory API (runs once when group is completed)
+  const hasSavedRef = useRef(false);
   useEffect(() => {
-    if (saved || !token || group.status !== 'completed') return;
-    setSaved(true);
+    if (hasSavedRef.current || !token || group.status !== 'completed') return;
+    hasSavedRef.current = true;
+
+    const groupSnapshot = group;
+    const answersSnapshot = store.answers;
+    const powerSnapshot = store.powerScore;
+
+    const totalQ = groupSnapshot.articles.flatMap((a) => a.questions).length;
+    const correctC = groupSnapshot.articles.flatMap((a) => a.questions).filter((q) => {
+      const ans = answersSnapshot[q.question_id]?.answer;
+      return ans === q.correct_answer;
+    }).length;
+    const acc = totalQ > 0 ? Math.round((correctC / totalQ) * 100) : 0;
+    const durMs = (groupSnapshot.end_time || groupSnapshot.start_time + 900000) - groupSnapshot.start_time;
 
     const doSave = async () => {
       try {
-        // Save training record
         await addTrainingRecord(token, {
-          session_id: group.group_id,
-          article_count: group.articles.length,
-          question_count: totalQuestions,
-          correct_count: correctCount,
-          total_time_seconds: Math.round(durationMs / 1000),
-          difficulty: group.difficulty,
-          score: accuracy,
+          session_id: groupSnapshot.group_id,
+          article_count: groupSnapshot.articles.length,
+          question_count: totalQ,
+          correct_count: correctC,
+          total_time_seconds: Math.round(durMs / 1000),
+          difficulty: groupSnapshot.difficulty,
+          score: acc,
         });
 
-        // Save wrong answers as mistakes + get diagnoses
         setDiagnosisLoading(true);
-        for (const art of group.articles) {
+        for (const art of groupSnapshot.articles) {
           const artAnswers = art.questions.map((q) => ({
             question_id: q.question_id,
-            user_answer: getUserAnswer(q.question_id),
-            is_correct: isCorrect(q.question_id, q.correct_answer),
-            time_spent: allAnswers[q.question_id]?.timeSpent ?? 0,
-            start_time: allAnswers[q.question_id]?.startTime ?? 0,
+            user_answer: answersSnapshot[q.question_id]?.answer ?? '',
+            is_correct: answersSnapshot[q.question_id]?.answer === q.correct_answer,
+            time_spent: answersSnapshot[q.question_id]?.timeSpent ?? 0,
+            start_time: answersSnapshot[q.question_id]?.startTime ?? 0,
             submit_time: Date.now(),
           }));
 
           const wrongAnswers = artAnswers.filter((a) => !a.is_correct && a.user_answer);
           if (wrongAnswers.length === 0) continue;
 
-          // Get diagnoses from backend
-          const diagnosisMap = await submitAttemptDiagnosis(token, group.group_id, art, artAnswers);
+          const diagnosisMap = await submitAttemptDiagnosis(token, groupSnapshot.group_id, art, artAnswers);
           for (const [qId, diag] of Object.entries(diagnosisMap)) {
             store.recordDiagnosis(qId, diag);
           }
 
-          // Save mistakes
           for (const attempt of wrongAnswers) {
             const question = art.questions.find((q) => q.question_id === attempt.question_id);
             if (!question) continue;
-            const mistakeId = `mis_${group.group_id}_${attempt.question_id}`;
+            const mistakeId = `mis_${groupSnapshot.group_id}_${attempt.question_id}`;
             try {
               await addMistake(token, {
                 mistake_id: mistakeId,
@@ -225,29 +233,26 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
                 difficulty: art.difficulty,
               });
             } catch {
-              // Non-critical; continue
+              // Non-critical
             }
           }
         }
         setDiagnosisLoading(false);
 
-        // Save power score
-        if (powerScore) {
+        if (powerSnapshot) {
           await addPowerRecord(
             token,
-            powerScore.total,
-            `完成训练，正确率 ${accuracy}%，难度 ${group.difficulty}`,
+            powerSnapshot.total,
+            `完成训练，正确率 ${acc}%，难度 ${groupSnapshot.difficulty}`,
           );
         }
       } catch {
-        // Non-critical; silently continue
         setDiagnosisLoading(false);
       }
     };
 
     void doSave();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [token, group.status, group.group_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleChat() {
     if (!chatInput.trim() || chatLoading) return;

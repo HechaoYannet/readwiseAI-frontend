@@ -219,8 +219,6 @@ git clone https://github.com/HechaoYannet/readwiseAI-frontend.git
 cd readwiseAI-frontend
 
 # 安装依赖
-echo "registry=https://registry.npmjs.org/
-replace-registry-host=always" > .npmrc
 npm install
 
 # 启动开发服务器（Mock 模式，无需后端）
