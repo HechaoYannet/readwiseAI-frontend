@@ -510,7 +510,7 @@ export async function generateTrainingGroup(
     //return createMockTrainingGroup(difficulty);
     //}
 
-    const result = await pollResult(token, initResp.request_id, 40, 3000);
+    const result = await pollResult(token, initResp.request_id, 100, 3000);
     if (result.status === 'completed' && result.results) {
         // try {
             return mapTrainingSetResult(result.results, difficulty, initResp.session_id ?? sessionId);
