@@ -10,7 +10,7 @@ import { useTrainingStore } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
 import { createMockTrainingGroup } from '@/lib/mock-data';
 import { addTrainingRecord, addMistake, addPowerRecord, submitQA, submitAttemptDiagnosis, getSessionHistory } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
+import { cn, truncateText } from '@/lib/utils';
 
 const LONG_SENTENCE_MIN_WORDS = 15;
 const LONG_SENTENCE_MAX_COUNT = 3;
@@ -326,17 +326,18 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
     let displayText = userMsg;
 
     if (citation) {
+      const citationPreview = `[引用] "${truncateText(citation.text)}"`;
       if (citation.type === 'translate') {
         queryType = 'free';
         content = `请翻译以下句子：\n"${citation.text}"${userMsg ? `\n\n附加问题：${userMsg}` : ''}`;
-        displayText = `[引用] "${citation.text.slice(0, 40)}${citation.text.length > 40 ? '…' : ''}"${userMsg ? `\n${userMsg}` : ''}`;
+        displayText = `${citationPreview}${userMsg ? `\n${userMsg}` : ''}`;
       } else if (citation.type === 'sentence') {
         queryType = 'free';
         content = `请分析以下长难句的结构：\n"${citation.text}"${userMsg ? `\n\n附加问题：${userMsg}` : ''}`;
-        displayText = `[引用] "${citation.text.slice(0, 40)}${citation.text.length > 40 ? '…' : ''}"${userMsg ? `\n${userMsg}` : ''}`;
+        displayText = `${citationPreview}${userMsg ? `\n${userMsg}` : ''}`;
       } else {
         content = `"${citation.text}"\n\n${userMsg}`;
-        displayText = `[引用] "${citation.text.slice(0, 40)}${citation.text.length > 40 ? '…' : ''}"\n${userMsg}`;
+        displayText = `${citationPreview}\n${userMsg}`;
       }
     }
 

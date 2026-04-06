@@ -47,9 +47,10 @@
 | `qa` (free) | 自由问答（支持工具调用） | `session_id`, `content`(任意问题) | `lib/api-client.ts → submitQA()` |
 
 **⚠️ 关键注意：**
-- `session_id` 必须提供，传空字符串 `""` 由服务端自动生成（但无法追踪）
-- 同一训练会话必须使用同一 `session_id`（等同于 `group.group_id`）
-- 主页聊天使用 `homeChatSessionId`（持久化存储，保证会话连续性）
+- `session_id` 必须提供，缺失则服务端返回 HTTP 422 错误
+- 传空字符串 `""` 时服务端自动生成随机 ID，但该 ID 无法追踪（无法继续同一会话），**仅适合一次性查询**
+- 同一训练会话必须使用同一 `session_id`（等同于 `group.group_id`，由 `generateTrainingGroup()` 通过后端返回的 `initResp.session_id` 确定）
+- 主页聊天使用 `homeChatSessionId`（持久化存储，保证会话连续性），由客户端生成后在第一条消息发送时注册到服务端
 
 ---
 

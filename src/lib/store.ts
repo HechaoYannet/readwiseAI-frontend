@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { TrainingGroup, PowerScore, DiagnosisResult, ParagraphTiming, ArticleSession } from '@/types/training';
 
+/** Maximum number of saved group IDs to retain (prevents unbounded growth) */
+const MAX_SAVED_GROUP_IDS = 50;
+
 interface AnswerRecord {
   answer: string;
   timeSpent: number;
@@ -154,7 +157,7 @@ export const useTrainingStore = create<TrainingStore>()(
         set((s) => ({
           savedGroupIds: s.savedGroupIds.includes(groupId)
             ? s.savedGroupIds
-            : [...s.savedGroupIds, groupId].slice(-50),
+            : [...s.savedGroupIds, groupId].slice(-MAX_SAVED_GROUP_IDS),
         })),
 
       setHomeChatSessionId: (sessionId) => set({ homeChatSessionId: sessionId }),

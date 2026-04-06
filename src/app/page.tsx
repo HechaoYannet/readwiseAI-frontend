@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTrainingStore } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
 import { getUserStats, submitQA, getSessions, getSessionHistory } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
+import { cn, generateChatSessionId } from '@/lib/utils';
 import type { ModeCard } from '@/types/home';
 
 const modeCards: ModeCard[] = [
@@ -124,7 +124,7 @@ export default function Home() {
         }
         if (!sessionId) {
           // Create a new session ID (will be registered on first message)
-          sessionId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          sessionId = generateChatSessionId();
         }
         setHomeChatSessionId(sessionId);
       }
@@ -196,7 +196,7 @@ export default function Home() {
   }
 
   function startNewSession() {
-    const sessionId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = generateChatSessionId();
     setHomeChatSessionId(sessionId);
     setAiMessages([]);
     setShowSessions(false);
@@ -210,7 +210,7 @@ export default function Home() {
     setAiLoading(true);
 
     // Ensure we have a session ID
-    const sessionId = homeChatSessionId ?? `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = homeChatSessionId ?? generateChatSessionId();
     if (!homeChatSessionId) setHomeChatSessionId(sessionId);
 
     try {
