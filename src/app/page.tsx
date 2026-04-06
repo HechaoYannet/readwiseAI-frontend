@@ -76,6 +76,7 @@ export default function Home() {
 
   async function handleAiSend() {
     if (!aiInput.trim() || aiLoading) return;
+    console.log("MMMMMMMMMMMMMM")
     const userMsg = aiInput.trim();
     setAiInput('');
     setAiMessages((prev) => [...prev, { role: 'user', text: userMsg }]);
