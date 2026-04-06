@@ -20,11 +20,11 @@ ReadWise AI 是一个面向高中生的 AI 驱动英语阅读训练平台。系�
 | **AI 生成训练** | 按难度和主题生成 4 篇英语阅读文章及配套题目 |
 | **实时答题追踪** | 记录每题答题时间、段落阅读时长、整体训练耗时 |
 | **AI 错误诊断** | 训练完成后，对每道错题进行 AI 错因分析（错误类型、证据句、修复建议） |
-| **长难句解析** | 自动提取文章长难句，提供 AI 翻译、主干拆解、提问功能 |
+| **长难句解析** | 自动提取文章长难句，提供 AI 翻译、主干拆解和引用提问功能 |
 | **错题本** | 自动保存错题，支持筛选、搜索和查看诊断详情 |
 | **遗忘曲线复习** | 基于 SM-2 算法计划错题复习，用户评分后自动调整下次复习时间 |
 | **战力值追踪** | 综合正确率、速度、词汇力等维度计算战力值，持久化历史记录 |
-| **AI 助手问答** | 在分析页和首页随时向 AI 提问，支持单词解释、句子翻译、语法分析 |
+| **AI 助手问答** | 主页和分析页均支持 AI 聊天，含会话管理和 Markdown 渲染 |
 
 ---
 
@@ -38,6 +38,7 @@ ReadWise AI 是一个面向高中生的 AI 驱动英语阅读训练平台。系�
 - **样式**: [Tailwind CSS v4](https://tailwindcss.com)
 - **状态管理**: [Zustand 5](https://zustand-demo.pmnd.rs) (with localStorage persistence)
 - **图标**: [Lucide React](https://lucide.dev)
+- **Markdown 渲染**: [react-markdown](https://github.com/remarkjs/react-markdown)
 
 ### 目录结构
 
@@ -90,7 +91,7 @@ src/
 - 今日推荐：从 API 获取待复习题目数量，引导用户复习
 - 继续上次未完成训练的快捷入口
 - 四种训练模式卡片（速读/精读/猜词/模考），均跳转至 `/train`
-- 右下角 AI 助手悬浮球，支持实时问答（接入后端 QA API）
+- 右下角 AI 助手悬浮球，支持实时问答、**会话管理**（切换/新建会话）、**历史记录加载**，聊天内容支持 **Markdown 渲染**
 
 ### `/login` 登录与注册
 - 双 Tab（登录 / 注册）切换
@@ -101,19 +102,20 @@ src/
 - 难度选择（L1 初级 / L2 中级 / L3 高级 / L4 竞赛）
 - 主题选择（科技/文化/社会/环境/教育，可选）
 - 提交后调用后端 `training_set` API 生成文章（含轮询等待）
-- 展示历史训练记录，可跳转查看分析报告
+- 展示历史训练记录，可跳转查看分析报告（**不会重复触发 AI 诊断**）
 
 ### `/read/[groupId]-[articleIndex]` 阅读答题
 - 左栏：文章内容（段落级 IntersectionObserver 计时）
 - 右栏：答题区（题目导航、选项高亮、进度条）
 - 支持答题卡全览（跨文章跳题）
 - 完成最后一篇后跳转分析页，期间自动计算战力分数
+- 训练全程使用同一 `session_id`（等同于 `group.group_id`），保证 AI 上下文连贯
 
 ### `/analysis/[groupId]` 错误分析报告
-- 页面加载后自动向后端提交各错题诊断请求（`attempt` API）
-- 同步保存训练记录、错题、战力值到长期记忆 API
-- 长难句 AI 解析（翻译/主干拆解）直接调用后端 QA API
-- AI 助手聊天框接入后端，支持实时问答
+- **首次进入**（刚完成训练）：自动保存训练记录、触发错题 AI 诊断、保存错题和战力值
+- **历史回顾**（从训练记录点入）：仅展示历史数据，**不重复调用 AI 诊断 API**
+- 划词翻译/长难句提问改为**引用 UI**（显示引用气泡，不直接填充输入框）
+- AI 聊天支持 **Markdown 渲染**，聊天区高度**自适应视窗**
 
 ### `/review` 今日复习
 - 从后端获取基于 SM-2 算法的待复习错题
@@ -140,89 +142,21 @@ src/
 
 所有后端请求封装在 `src/lib/api-client.ts`。当环境变量 `NEXT_PUBLIC_API_URL` 未设置时，所有 API 函数自动回退到 **Mock 数据模式**，方便本地开发与演示。
 
+详细 API 调用说明请参见 [`api_used.md`](./api_used.md)，详细 API 接口文档请参见 [`frontend_follow.md`](./frontend_follow.md)。
+
 ### 环境变量
 
 ```env
 NEXT_PUBLIC_API_URL=https://your-backend-api.com
 ```
 
-### API 模块对应关系
+### 关键设计：Session ID 管理
 
-| 前端函数 | 后端接口 | 说明 |
-|---------|---------|------|
-| `loginUser()` | `POST /api/auth/login` | 用户登录 |
-| `registerUser()` | `POST /api/auth/register` | 用户注册 |
-| `verifyInvite()` | `POST /api/auth/verify-invite` | 验证邀请码 |
-| `getMe()` | `GET /api/users/me` | 获取当前用户 |
-| `updateMe()` | `PUT /api/users/me` | 更新用户信息 |
-| `changePassword()` | `PUT /api/users/password` | 修改密码 |
-| `getUserStats()` | `GET /api/users/stats` | 获取用户统计 |
-| `generateTrainingGroup()` | `POST /api/attempt` (training_set) → `GET /api/result/{id}` | 生成训练组（轮询） |
-| `submitAttemptDiagnosis()` | `POST /api/attempt` (attempt) → `GET /api/result/{id}` | 单题错误诊断（轮询） |
-| `submitQA()` | `POST /api/attempt` (qa) → `GET /api/result/{id}` | AI 问答（轮询） |
-| `getTrainingRecords()` | `GET /api/memory/training` | 训练记录列表 |
-| `addTrainingRecord()` | `POST /api/memory/training` | 保存训练记录 |
-| `getMistakes()` | `GET /api/memory/mistakes` | 错题列表 |
-| `getDueMistakes()` | `GET /api/memory/mistakes/due` | 待复习错题 |
-| `addMistake()` | `POST /api/memory/mistakes` | 添加错题 |
-| `updateMistake()` | `PUT /api/memory/mistakes/{id}` | 更新错题 |
-| `deleteMistake()` | `DELETE /api/memory/mistakes/{id}` | 删除错题 |
-| `getCurveOverview()` | `GET /api/memory/curve` | 遗忘曲线概览 |
-| `getDueCurveItems()` | `GET /api/memory/curve/due` | 待复习 SM-2 条目 |
-| `submitReview()` | `POST /api/memory/curve/{id}/review` | 提交复习评分 |
-| `getPowerHistory()` | `GET /api/memory/power` | 战力值历史 |
-| `addPowerRecord()` | `POST /api/memory/power` | 记录战力值 |
-| `getSessions()` | `GET /api/sessions` | 会话列表 |
-| `deleteSession()` | `DELETE /api/sessions/{id}` | 删除会话 |
-
-### 训练生成流程
-
-```
-用户点击"开始训练"
-    ↓
-POST /api/attempt { request_type: "training_set", session_id: "session_xxx", user_level: "L2" }
-    ↓ 返回 { request_id, session_id, status: "processing" }
-    ↓ 轮询 GET /api/result/{request_id}（每 3 秒，最多 2 分钟）
-    ↓ status === "completed"
-    ↓ 解析 results["dyn_c1~dyn_c4"] → 每项的 .article 字段为文章对象
-    ↓ 解析 results["dyn_q1~dyn_q4"] → 每项的 .questions 字段为题目数组
-    ↓ 文章字段使用 difficulty_actual / genre_actual（非 difficulty / genre）
-    ↓
-创建 TrainingGroup，存入 Zustand，跳转 /read/{session_id}-0
-```
-
-### 错题诊断流程
-
-```
-用户完成训练，跳转 /analysis/{groupId}
-    ↓
-对每道错题并发提交：
-POST /api/attempt { request_type: "attempt", session_id, paragraph, question_text,
-                    options, user_answer, correct_answer, time_spent }
-    ↓ 轮询 GET /api/result/{request_id}
-    ↓ status === "completed"
-    ↓ 读取 results.sub_001.diagnosis → { error_category, explanation（错因说明）,
-        evidence_sentence（原文证据）, suggestion（学习建议）, confidence }
-    ↓ 读取 results.sub_001.similar_question → 同类练习题（可选展示）
-    ↓
-同步到 Zustand store.recordDiagnosis()，实时显示在错误分析卡片
-```
-
-### AI 问答响应解析
-
-`submitQA()` 根据 `query_type` 解析不同的响应字段（均来自 `results.sub_001`）：
-
-| query_type | 响应字段 | 展示逻辑 |
-|-----------|---------|---------|
-| `word` | `basic_meaning.translation`, `context_meaning`, `usage_notes` | 词义 + 语境含义 + 用法说明 |
-| `sentence` | `translation`, `main_clause`, `structure_analysis`, `key_grammar_points` | 译文 + 主干 + 结构分析 |
-| `grammar` | `grammar_point`, `explanation`, `examples` | 语法点 + 解释 + 例句 |
-| `translate` | `translation`, `notes` | 译文 + 注释 |
-| `free` | `answer` | 自由回答文本 |
-
-### 重要：`session_id` 为必填字段
-
-`/api/attempt` 的所有请求类型（`attempt`、`qa`、`training_set`）均要求 Body 中包含 `session_id` 字段（不可省略，缺失返回 HTTP 422）。传空字符串 `""` 时服务端自动生成随机 ID。
+| 场景 | session_id | 存储 |
+|------|-----------|------|
+| 训练会话 | 由后端 `/api/attempt` 返回，存为 `group.group_id` | Zustand persist |
+| 训练分析聊天 | 复用 `group.group_id`，保证上下文连贯 | 同上 |
+| 主页聊天 | 从服务端获取或本地生成 `chat_xxx`，跨页面持久化 | `homeChatSessionId` in Zustand persist |
 
 ---
 
@@ -294,6 +228,8 @@ npm run lint     # ESLint 检查
 | `diagnosisResults` | `Record<string, DiagnosisResult>` | AI 错因诊断结果 |
 | `powerScore` | `PowerScore \| null` | 本次战力值 |
 | `trainingHistory` | `TrainingGroup[]` | 历史训练组（最近 20 条） |
+| `savedGroupIds` | `string[]` | 已同步到服务端的训练组 ID（防止重复保存） |
+| `homeChatSessionId` | `string \| null` | 主页聊天的持久化 session ID |
 
 两个 Store 均通过 Zustand `persist` 中间件同步至 `localStorage`，支持页面刷新后恢复状态。
 
@@ -334,6 +270,7 @@ npm run lint     # ESLint 检查
 - 卡片阴影：`shadow-sm`
 - 动画：`transition-colors` / `transition-all`
 - 移动优先：最大宽度 `max-w-2xl`（列表页）/ `max-w-7xl`（双栏页）
+- 聊天窗口：高度自适应（`min-h` + `max-h` 基于 `40vh`）
 
 ---
 
@@ -350,3 +287,4 @@ npm run lint     # ESLint 检查
 ## License
 
 MIT © ReadWise AI Team
+

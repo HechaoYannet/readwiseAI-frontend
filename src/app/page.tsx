@@ -1,16 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BookOpenCheck, Gauge, Lightbulb, MessageCircle, Settings, Timer, Zap, ChevronRight } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { BookOpenCheck, Gauge, Lightbulb, MessageCircle, Settings, Timer, Zap, ChevronRight, Send, History } from 'lucide-react';
 import ModeCardItem from '@/components/home/mode-card';
 import PowerOrb from '@/components/home/power-orb';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTrainingStore } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
-import { getUserStats, submitQA } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
+import { getUserStats, submitQA, getSessions, getSessionHistory } from '@/lib/api-client';
+import { cn, generateChatSessionId } from '@/lib/utils';
 import type { ModeCard } from '@/types/home';
 
 const modeCards: ModeCard[] = [
@@ -48,8 +49,29 @@ const modeCards: ModeCard[] = [
   },
 ];
 
+/** Renders AI response with basic Markdown support */
+function MarkdownMessage({ text }: { text: string }) {
+  return (
+    <ReactMarkdown
+      components={{
+        p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        code: ({ children }) => (
+          <code className="rounded bg-slate-200 px-1 py-0.5 font-mono text-[10px] text-slate-800">{children}</code>
+        ),
+        ul: ({ children }) => <ul className="ml-3 list-disc space-y-0.5">{children}</ul>,
+        ol: ({ children }) => <ol className="ml-3 list-decimal space-y-0.5">{children}</ol>,
+        li: ({ children }) => <li>{children}</li>,
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+}
+
 export default function Home() {
-  const { currentGroup, powerScore } = useTrainingStore();
+  const { currentGroup, powerScore, homeChatSessionId, setHomeChatSessionId } = useTrainingStore();
   const { token, user, stats, setStats } = useAuthStore();
   const router = useRouter();
   const hasInProgress = currentGroup?.status === 'in_progress';
@@ -61,6 +83,10 @@ export default function Home() {
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [sessionIds, setSessionIds] = useState<string[]>([]);
+  const [showSessions, setShowSessions] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!token) router.replace('/login');
@@ -72,23 +98,133 @@ export default function Home() {
     getUserStats(token).then(setStats).catch(() => {});
   }, [token, setStats]);
 
+  // Track whether chat init has been run for the current chat open
+  const chatInitDoneRef = useRef(false);
+
+  // Initialize home chat: get or create a persistent chatting session
+  useEffect(() => {
+    if (!token || !showAiChat) return;
+    if (chatInitDoneRef.current) return;
+    chatInitDoneRef.current = true;
+
+    const storedSessionId = homeChatSessionId;
+    const currentMessages = aiMessages;
+
+    const initSession = async () => {
+      // Use stored session or fetch the most recent chatting session
+      let sessionId = storedSessionId;
+      if (!sessionId) {
+        try {
+          const list = await getSessions(token, 'chatting');
+          if (list.session_ids.length > 0) {
+            sessionId = list.session_ids[0];
+          }
+        } catch {
+          // ignore
+        }
+        if (!sessionId) {
+          // Create a new session ID (will be registered on first message)
+          sessionId = generateChatSessionId();
+        }
+        setHomeChatSessionId(sessionId);
+      }
+
+      // Load conversation history only if no messages loaded yet
+      if (currentMessages.length === 0 && sessionId) {
+        setLoadingHistory(true);
+        try {
+          const hist = await getSessionHistory(token, sessionId, 40);
+          if (hist.history.length > 0) {
+            setAiMessages(
+              hist.history.map((m) => ({
+                role: m.role === 'assistant' ? 'bot' : 'user',
+                text: m.content,
+              })),
+            );
+          }
+        } catch {
+          // ignore
+        } finally {
+          setLoadingHistory(false);
+        }
+      }
+
+      // Fetch all chatting session IDs for session manager
+      try {
+        const list = await getSessions(token, 'chatting');
+        setSessionIds(list.session_ids);
+      } catch {
+        // ignore
+      }
+    };
+
+    void initSession();
+  }, [token, showAiChat]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset init flag when chat is closed so it re-initializes on next open
+  useEffect(() => {
+    if (!showAiChat) chatInitDoneRef.current = false;
+  }, [showAiChat]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [aiMessages]);
+
   if (!token) return null;
+
+  async function switchSession(sessionId: string) {
+    if (!token) return;
+    setHomeChatSessionId(sessionId);
+    setAiMessages([]);
+    setShowSessions(false);
+    setLoadingHistory(true);
+    try {
+      const hist = await getSessionHistory(token, sessionId, 40);
+      if (hist.history.length > 0) {
+        setAiMessages(
+          hist.history.map((m) => ({
+            role: m.role === 'assistant' ? 'bot' : 'user',
+            text: m.content,
+          })),
+        );
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  function startNewSession() {
+    const sessionId = generateChatSessionId();
+    setHomeChatSessionId(sessionId);
+    setAiMessages([]);
+    setShowSessions(false);
+  }
 
   async function handleAiSend() {
     if (!aiInput.trim() || aiLoading) return;
-    console.log("MMMMMMMMMMMMMM")
     const userMsg = aiInput.trim();
     setAiInput('');
     setAiMessages((prev) => [...prev, { role: 'user', text: userMsg }]);
     setAiLoading(true);
+
+    // Ensure we have a session ID
+    const sessionId = homeChatSessionId ?? generateChatSessionId();
+    if (!homeChatSessionId) setHomeChatSessionId(sessionId);
+
     try {
       const reply = await submitQA(token!, {
         request_type: 'qa',
         query_type: 'free',
         content: userMsg,
-        session_id: '', // empty string → server auto-generates a session ID
+        session_id: sessionId,
       });
       setAiMessages((prev) => [...prev, { role: 'bot', text: reply }]);
+      // Refresh session list after first message
+      if (sessionIds.length === 0 || !sessionIds.includes(sessionId)) {
+        getSessions(token!, 'chatting').then((l) => setSessionIds(l.session_ids)).catch(() => {});
+      }
     } catch {
       setAiMessages((prev) => [...prev, { role: 'bot', text: '请求失败，请重试' }]);
     } finally {
@@ -165,24 +301,89 @@ export default function Home() {
       {/* AI Chat Floating Ball */}
       <div className="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2">
         {showAiChat && (
-          <div className="w-72 rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden">
+          <div
+            className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            style={{ width: 'min(20rem, calc(100vw - 2rem))' }}
+          >
+            {/* Header */}
             <div className="flex items-center justify-between bg-[#1E3A5F] px-4 py-3">
               <span className="text-sm font-semibold text-white">AI 问答助手</span>
-              <button type="button" onClick={() => setShowAiChat(false)} className="text-white/70 hover:text-white text-xs">✕</button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSessions((v) => !v)}
+                  title="会话管理"
+                  className="text-white/70 hover:text-white"
+                >
+                  <History className="h-4 w-4" />
+                </button>
+                <button type="button" onClick={() => setShowAiChat(false)} className="text-white/70 hover:text-white text-xs">✕</button>
+              </div>
             </div>
-            <div className="flex-1 max-h-48 overflow-y-auto p-3 space-y-2 bg-slate-50">
-              {aiMessages.length === 0 && (
+
+            {/* Session manager */}
+            {showSessions && (
+              <div className="border-b border-slate-100 bg-slate-50 p-2 space-y-1 max-h-36 overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={startNewSession}
+                  className="w-full rounded px-2 py-1 text-left text-xs text-sky-600 hover:bg-sky-50 font-medium"
+                >
+                  + 新建会话
+                </button>
+                {sessionIds.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => void switchSession(id)}
+                    className={cn(
+                      'w-full truncate rounded px-2 py-1 text-left text-xs transition-colors',
+                      id === homeChatSessionId
+                        ? 'bg-sky-100 text-sky-800 font-medium'
+                        : 'text-slate-600 hover:bg-slate-100',
+                    )}
+                  >
+                    {id}
+                  </button>
+                ))}
+                {sessionIds.length === 0 && (
+                  <p className="px-2 py-1 text-xs text-slate-400">暂无历史会话</p>
+                )}
+              </div>
+            )}
+
+            {/* Messages */}
+            <div
+              className="overflow-y-auto p-3 space-y-2 bg-slate-50"
+              style={{ minHeight: '6rem', maxHeight: '40vh' }}
+            >
+              {loadingHistory ? (
+                <p className="text-xs text-slate-400 text-center py-2">加载历史记录...</p>
+              ) : aiMessages.length === 0 ? (
                 <p className="text-xs text-slate-400">有什么关于英语学习的问题？</p>
-              )}
+              ) : null}
               {aiMessages.map((m, i) => (
-                <div key={i} className={cn(
-                  'rounded-lg px-2.5 py-1.5 text-xs',
-                  m.role === 'user' ? 'bg-sky-100 text-sky-800 ml-6' : 'bg-white border border-slate-200 text-slate-700'
-                )}>
-                  {m.text}
+                <div
+                  key={i}
+                  className={cn(
+                    'rounded-lg px-2.5 py-1.5 text-xs',
+                    m.role === 'user' ? 'bg-sky-100 text-sky-800 ml-6' : 'bg-white border border-slate-200 text-slate-700',
+                  )}
+                >
+                  {m.role === 'bot' ? <MarkdownMessage text={m.text} /> : m.text}
                 </div>
               ))}
+              {aiLoading && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: '0ms' }} />
+                  <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: '150ms' }} />
+                  <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: '300ms' }} />
+                </div>
+              )}
+              <div ref={chatEndRef} />
             </div>
+
+            {/* Input */}
             <div className="flex gap-2 p-2 border-t border-slate-100">
               <input
                 type="text"
@@ -196,10 +397,10 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => void handleAiSend()}
-                disabled={aiLoading}
-                className="rounded-lg bg-sky-500 px-2 py-1.5 text-white text-xs hover:bg-sky-600 disabled:opacity-50"
+                disabled={aiLoading || !aiInput.trim()}
+                className="rounded-lg bg-sky-500 px-2 py-1.5 text-white hover:bg-sky-600 disabled:opacity-50"
               >
-                {aiLoading ? '...' : '发送'}
+                <Send className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
