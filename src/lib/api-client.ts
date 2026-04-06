@@ -388,6 +388,7 @@ async function pollResult(token: string, requestId: string, maxRetries = 40, int
             if (!res.ok) continue;
             const data = await res.json() as ResultResponse;
             if (data.status === 'completed') return data;
+            if (data.status === 'failed') return data;
         } catch (e) {
             if (e instanceof Error && e.message === '无权访问该请求结果') throw e;
         }
@@ -494,26 +495,28 @@ export async function generateTrainingGroup(
     }
 
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    let initResp: AttemptInitResponse;
-    try {
-        initResp = await postAttempt(token, {
-            request_type: 'training_set',
-            session_id: sessionId,
-            user_level: difficulty,
-            ...(topic ? {topic} : {}),
-        });
-    } catch {
-        await sleep(500);
-        return createMockTrainingGroup(difficulty);
-    }
+
+    //try {
+    const initResp: AttemptInitResponse = await postAttempt(token, {
+        request_type: 'training_set',
+        session_id: sessionId,
+        context: "根据用户的英语水平和兴趣生成一套包含4篇文章的训练材料，参考高考真题出一组训练题.",
+        user_level: difficulty,
+        ...(topic ? {topic} : {}),
+    });
+    //} catch(error) {
+    //console.error(`失败原因：${error instanceof Error ? error.message : '未知错误'}`);
+    //await sleep(500);
+    //return createMockTrainingGroup(difficulty);
+    //}
 
     const result = await pollResult(token, initResp.request_id, 40, 3000);
     if (result.status === 'completed' && result.results) {
-        try {
+        // try {
             return mapTrainingSetResult(result.results, difficulty, initResp.session_id ?? sessionId);
-        } catch {
-            return createMockTrainingGroup(difficulty);
-        }
+        // } catch {
+        //     return createMockTrainingGroup(difficulty);
+        // }
     }
 
     return createMockTrainingGroup(difficulty);
