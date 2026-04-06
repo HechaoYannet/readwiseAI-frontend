@@ -142,7 +142,7 @@ src/
 
 所有后端请求封装在 `src/lib/api-client.ts`。当环境变量 `NEXT_PUBLIC_API_URL` 未设置时，所有 API 函数自动回退到 **Mock 数据模式**，方便本地开发与演示。
 
-详细 API 调用说明请参见 [`api_used.md`](./api_used.md)，详细 API 接口文档请参见 [`frontend_follow.md`](./frontend_follow.md)。
+详细 API 调用说明请参见 [`api_used.md`](Docs/api_used.md)，详细 API 接口文档请参见 [`frontend_follow.md`](Docs/frontend_follow.md)。
 
 ### 环境变量
 
