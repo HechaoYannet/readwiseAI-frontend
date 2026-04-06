@@ -150,7 +150,6 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
   const [diagnosisLoading, setDiagnosisLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
-  const chatAreaRef = useRef<HTMLDivElement>(null);
 
   const mockGroup = useMemo(() => {
     const mock = createMockTrainingGroup();
@@ -213,6 +212,9 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
 
   // Save training data to Memory API (runs once when group is freshly completed)
   const hasSavedRef = useRef(false);
+  const markGroupSavedRef = useRef(store.markGroupSaved);
+  markGroupSavedRef.current = store.markGroupSaved;
+
   useEffect(() => {
     // Guard: only save for the current (just-completed) group, not historical ones
     if (!isCurrentGroup) return;
@@ -298,14 +300,14 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
         }
 
         // Mark this group as saved so we don't duplicate on revisit
-        store.markGroupSaved(groupSnapshot.group_id);
+        markGroupSavedRef.current(groupSnapshot.group_id);
       } catch {
         setDiagnosisLoading(false);
       }
     };
 
     void doSave();
-  }, [token, group.status, group.group_id, isCurrentGroup]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token, group.status, group.group_id, groupId, isCurrentGroup, store.savedGroupIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCite = useCallback((text: string, type: 'translate' | 'sentence' | 'free') => {
     setCitation({ text, type });
@@ -377,15 +379,7 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Auto-resize chat area based on content
-  useEffect(() => {
-    const el = chatAreaRef.current;
-    if (!el) return;
-    const minH = 96;
-    const maxH = Math.min(320, window.innerHeight * 0.35);
-    el.style.maxHeight = `${maxH}px`;
-    el.style.minHeight = `${minH}px`;
-  }, [chatMessages]);
+  // Auto-resize chat area is handled via CSS (max-h-[40vh] in JSX)
 
   const wrongQuestions = article.questions.filter(
     (q) => !isCorrect(q.question_id, q.correct_answer) && getUserAnswer(q.question_id),
@@ -605,7 +599,6 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
               <div
-                ref={chatAreaRef}
                 className="overflow-y-auto rounded-lg bg-slate-50 p-3 space-y-2 text-sm"
                 style={{ minHeight: '6rem', maxHeight: '40vh' }}
               >

@@ -87,7 +87,6 @@ export default function Home() {
   const [showSessions, setShowSessions] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const chatAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!token) router.replace('/login');
@@ -99,13 +98,21 @@ export default function Home() {
     getUserStats(token).then(setStats).catch(() => {});
   }, [token, setStats]);
 
+  // Track whether chat init has been run for the current chat open
+  const chatInitDoneRef = useRef(false);
+
   // Initialize home chat: get or create a persistent chatting session
   useEffect(() => {
     if (!token || !showAiChat) return;
+    if (chatInitDoneRef.current) return;
+    chatInitDoneRef.current = true;
+
+    const storedSessionId = homeChatSessionId;
+    const currentMessages = aiMessages;
 
     const initSession = async () => {
       // Use stored session or fetch the most recent chatting session
-      let sessionId = homeChatSessionId;
+      let sessionId = storedSessionId;
       if (!sessionId) {
         try {
           const list = await getSessions(token, 'chatting');
@@ -122,8 +129,8 @@ export default function Home() {
         setHomeChatSessionId(sessionId);
       }
 
-      // Load conversation history
-      if (aiMessages.length === 0 && sessionId) {
+      // Load conversation history only if no messages loaded yet
+      if (currentMessages.length === 0 && sessionId) {
         setLoadingHistory(true);
         try {
           const hist = await getSessionHistory(token, sessionId, 40);
@@ -154,17 +161,14 @@ export default function Home() {
     void initSession();
   }, [token, showAiChat]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reset init flag when chat is closed so it re-initializes on next open
+  useEffect(() => {
+    if (!showAiChat) chatInitDoneRef.current = false;
+  }, [showAiChat]);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [aiMessages]);
-
-  // Auto-size chat area based on content and window height
-  useEffect(() => {
-    const el = chatAreaRef.current;
-    if (!el) return;
-    const maxH = Math.min(280, window.innerHeight * 0.3);
-    el.style.maxHeight = `${maxH}px`;
-  }, [aiMessages, showAiChat]);
 
   if (!token) return null;
 
@@ -350,7 +354,6 @@ export default function Home() {
 
             {/* Messages */}
             <div
-              ref={chatAreaRef}
               className="overflow-y-auto p-3 space-y-2 bg-slate-50"
               style={{ minHeight: '6rem', maxHeight: '40vh' }}
             >
