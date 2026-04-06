@@ -382,7 +382,6 @@ async function pollResult(token: string, requestId: string, maxRetries = 40, int
     for (let i = 0; i < maxRetries; i++) {
         console.log(`轮询 (attempt ${i + 1}/${maxRetries})...`);
         await sleep(intervalMs);
-        console.log("sleep复活")
         try {
             const res = await fetch(`${API_BASE}/api/result/${requestId}`, {headers: authHeaders(token)});
             if (res.status === 403) throw new Error('无权访问该请求结果');
@@ -656,12 +655,9 @@ export async function submitQA(
         };
         return stubs[payload.query_type] ?? 'AI 功能需连接后端';
     }
-    console.log("提交QA", payload);
     try {
         const initResp = await postAttempt(token, payload as unknown as Record<string, unknown>);
-        console.log("attempt:", initResp)
         const result = await pollResult(token, initResp.request_id, 20, 2000);
-        console.log("结果：", result)
         if (result.status === 'completed' && result.results) {
             const sub = result.results.sub_001 as Record<string, unknown> | undefined;
             if (!sub) return 'AI 未返回结果，请重试';
