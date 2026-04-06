@@ -1,14 +1,15 @@
 'use client';
 
-import { use, useState, useRef, useEffect, useMemo } from 'react';
+import { use, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Loader2, MessageCircle, Send } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { ChevronLeft, ChevronRight, Loader2, MessageCircle, Send, X, Quote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTrainingStore } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
 import { createMockTrainingGroup } from '@/lib/mock-data';
-import { addTrainingRecord, addMistake, addPowerRecord, submitQA, submitAttemptDiagnosis } from '@/lib/api-client';
+import { addTrainingRecord, addMistake, addPowerRecord, submitQA, submitAttemptDiagnosis, getSessionHistory } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
 const LONG_SENTENCE_MIN_WORDS = 15;
@@ -26,9 +27,30 @@ function extractLongSentences(content: string): string[] {
     .slice(0, LONG_SENTENCE_MAX_COUNT);
 }
 
-function LongSentenceItem({ sentence, onAsk, token, sessionId }: {
+/** Renders AI response with basic Markdown support */
+function MarkdownMessage({ text }: { text: string }) {
+  return (
+    <ReactMarkdown
+      components={{
+        p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        code: ({ children }) => (
+          <code className="rounded bg-slate-200 px-1 py-0.5 font-mono text-xs text-slate-800">{children}</code>
+        ),
+        ul: ({ children }) => <ul className="ml-3 list-disc space-y-0.5">{children}</ul>,
+        ol: ({ children }) => <ol className="ml-3 list-decimal space-y-0.5">{children}</ol>,
+        li: ({ children }) => <li>{children}</li>,
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+}
+
+function LongSentenceItem({ sentence, onCite, token, sessionId }: {
   sentence: string;
-  onAsk: (t: string) => void;
+  onCite: (text: string, type: 'translate' | 'sentence') => void;
   token: string | null;
   sessionId: string;
 }) {
@@ -103,10 +125,11 @@ function LongSentenceItem({ sentence, onAsk, token, sessionId }: {
         </button>
         <button
           type="button"
-          onClick={() => onAsk(sentence)}
+          onClick={() => onCite(sentence, 'sentence')}
           className="rounded border border-sky-200 px-2 py-0.5 text-xs text-sky-600 hover:bg-sky-50"
         >
-          提问
+          <Quote className="inline h-3 w-3 mr-0.5" />
+          引用提问
         </button>
       </div>
     </div>
@@ -120,12 +143,14 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
 
   const [articleTab, setArticleTab] = useState(0);
   const [chatInput, setChatInput] = useState('');
+  const [citation, setCitation] = useState<{ text: string; type: 'translate' | 'sentence' | 'free' } | null>(null);
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
   const [diagnosisLoading, setDiagnosisLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const chatAreaRef = useRef<HTMLDivElement>(null);
 
   const mockGroup = useMemo(() => {
     const mock = createMockTrainingGroup();
@@ -140,6 +165,9 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
     () => (store.currentGroup?.group_id === groupId ? store.currentGroup : historicalGroup) ?? mockGroup,
     [store.currentGroup, historicalGroup, mockGroup, groupId],
   );
+
+  /** True only when this is a freshly-completed training (not viewing historical data) */
+  const isCurrentGroup = store.currentGroup?.group_id === groupId;
 
   const article = group.articles[articleTab];
   const paragraphs = article.content.split('\n\n').filter(Boolean);
@@ -166,10 +194,32 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
   const powerScore = store.powerScore;
   const powerDelta = powerScore ? `+${Math.max(0, Math.round((powerScore.total - 300) / 10))}` : '+?';
 
-  // Save training data to Memory API (runs once when group is completed)
+  // Load conversation history for this session (only for the current training session)
+  useEffect(() => {
+    if (!token || !isCurrentGroup) return;
+    getSessionHistory(token, groupId, 40)
+      .then((resp) => {
+        if (resp.history.length > 0) {
+          setChatMessages(
+            resp.history.map((m) => ({
+              role: m.role === 'assistant' ? 'bot' : 'user',
+              text: m.content,
+            })),
+          );
+        }
+      })
+      .catch(() => {});
+  }, [token, groupId, isCurrentGroup]);
+
+  // Save training data to Memory API (runs once when group is freshly completed)
   const hasSavedRef = useRef(false);
   useEffect(() => {
+    // Guard: only save for the current (just-completed) group, not historical ones
+    if (!isCurrentGroup) return;
     if (hasSavedRef.current || !token || group.status !== 'completed') return;
+    // Also skip if already saved to server in a previous visit
+    if (store.savedGroupIds.includes(groupId)) return;
+
     hasSavedRef.current = true;
 
     const groupSnapshot = group;
@@ -246,25 +296,57 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
             `完成训练，正确率 ${acc}%，难度 ${groupSnapshot.difficulty}`,
           );
         }
+
+        // Mark this group as saved so we don't duplicate on revisit
+        store.markGroupSaved(groupSnapshot.group_id);
       } catch {
         setDiagnosisLoading(false);
       }
     };
 
     void doSave();
-  }, [token, group.status, group.group_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token, group.status, group.group_id, isCurrentGroup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCite = useCallback((text: string, type: 'translate' | 'sentence' | 'free') => {
+    setCitation({ text, type });
+    setSelection(null);
+    setTimeout(() => chatInputRef.current?.focus(), 100);
+  }, []);
 
   async function handleChat() {
-    if (!chatInput.trim() || chatLoading) return;
+    if (chatLoading) return;
     const userMsg = chatInput.trim();
+    if (!userMsg && !citation) return;
+
+    // Build the content to send: citation prefix + user message
+    let content = userMsg;
+    let queryType: 'translate' | 'sentence' | 'free' = 'free';
+    let displayText = userMsg;
+
+    if (citation) {
+      if (citation.type === 'translate') {
+        queryType = 'free';
+        content = `请翻译以下句子：\n"${citation.text}"${userMsg ? `\n\n附加问题：${userMsg}` : ''}`;
+        displayText = `[引用] "${citation.text.slice(0, 40)}${citation.text.length > 40 ? '…' : ''}"${userMsg ? `\n${userMsg}` : ''}`;
+      } else if (citation.type === 'sentence') {
+        queryType = 'free';
+        content = `请分析以下长难句的结构：\n"${citation.text}"${userMsg ? `\n\n附加问题：${userMsg}` : ''}`;
+        displayText = `[引用] "${citation.text.slice(0, 40)}${citation.text.length > 40 ? '…' : ''}"${userMsg ? `\n${userMsg}` : ''}`;
+      } else {
+        content = `"${citation.text}"\n\n${userMsg}`;
+        displayText = `[引用] "${citation.text.slice(0, 40)}${citation.text.length > 40 ? '…' : ''}"\n${userMsg}`;
+      }
+    }
+
     setChatInput('');
-    setChatMessages((prev) => [...prev, { role: 'user', text: userMsg }]);
+    setCitation(null);
+    setChatMessages((prev) => [...prev, { role: 'user', text: displayText }]);
     setChatLoading(true);
     try {
       const reply = await submitQA(token ?? '', {
         request_type: 'qa',
-        query_type: 'free',
-        content: userMsg,
+        query_type: queryType,
+        content,
         session_id: group.group_id,
       });
       setChatMessages((prev) => [...prev, { role: 'bot', text: reply }]);
@@ -293,6 +375,16 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  // Auto-resize chat area based on content
+  useEffect(() => {
+    const el = chatAreaRef.current;
+    if (!el) return;
+    const minH = 96;
+    const maxH = Math.min(320, window.innerHeight * 0.35);
+    el.style.maxHeight = `${maxH}px`;
+    el.style.minHeight = `${minH}px`;
   }, [chatMessages]);
 
   const wrongQuestions = article.questions.filter(
@@ -408,10 +500,7 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
                     sentence={sentence}
                     token={token}
                     sessionId={group.group_id}
-                    onAsk={(text) => {
-                      setChatInput(`请分析这个句子：${text}`);
-                      setTimeout(() => chatInputRef.current?.focus(), 100);
-                    }}
+                    onCite={handleCite}
                   />
                 ))
               )}
@@ -509,16 +598,31 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
               <CardTitle className="flex items-center gap-2 text-sm text-[#1E3A5F]">
                 <MessageCircle className="h-4 w-4 text-sky-500" />
                 AI 助手
+                {!isCurrentGroup && (
+                  <span className="ml-auto text-xs font-normal text-slate-400">（历史记录）</span>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
-              <div className="rounded-lg bg-slate-50 p-3 min-h-24 max-h-40 overflow-y-auto space-y-2 text-sm">
+              <div
+                ref={chatAreaRef}
+                className="overflow-y-auto rounded-lg bg-slate-50 p-3 space-y-2 text-sm"
+                style={{ minHeight: '6rem', maxHeight: '40vh' }}
+              >
                 {chatMessages.length === 0 && (
                   <p className="text-slate-400 text-xs">输入问题，AI 助手将帮助分析错误原因、解释单词、翻译句子...</p>
                 )}
                 {chatMessages.map((m, i) => (
-                  <div key={i} className={cn('rounded px-2 py-1 text-xs', m.role === 'user' ? 'bg-sky-100 text-sky-800 ml-4' : 'bg-white border border-slate-200 text-slate-700')}>
-                    {m.text}
+                  <div
+                    key={i}
+                    className={cn(
+                      'rounded px-2 py-1.5 text-xs',
+                      m.role === 'user'
+                        ? 'bg-sky-100 text-sky-800 ml-4 whitespace-pre-wrap'
+                        : 'bg-white border border-slate-200 text-slate-700',
+                    )}
+                  >
+                    {m.role === 'bot' ? <MarkdownMessage text={m.text} /> : m.text}
                   </div>
                 ))}
                 {chatLoading && (
@@ -529,6 +633,23 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
                 )}
                 <div ref={chatEndRef} />
               </div>
+
+              {/* Citation preview */}
+              {citation && (
+                <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                  <Quote className="mt-0.5 h-3 w-3 shrink-0 text-sky-400" />
+                  <span className="flex-1 line-clamp-2 italic">{citation.text}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCitation(null)}
+                    className="shrink-0 text-sky-400 hover:text-sky-600"
+                    aria-label="取消引用"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <input
                   ref={chatInputRef}
@@ -536,11 +657,11 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !chatLoading) void handleChat(); }}
-                  placeholder="提问..."
+                  placeholder={citation ? '补充问题（可直接发送引用）...' : '提问...'}
                   className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400"
                   disabled={chatLoading}
                 />
-                <Button size="sm" onClick={() => void handleChat()} className="shrink-0" disabled={chatLoading}>
+                <Button size="sm" onClick={() => void handleChat()} className="shrink-0" disabled={chatLoading || (!chatInput.trim() && !citation)}>
                   {chatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
               </div>
@@ -562,23 +683,14 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
           <button
             type="button"
             className="px-2 py-1 rounded hover:bg-slate-700"
-            onClick={() => {
-              const text = selection.text;
-              setSelection(null);
-              setChatInput(`翻译：${text}`);
-              setTimeout(() => void handleChat(), 100);
-            }}
+            onClick={() => handleCite(selection.text, 'translate')}
           >
             翻译
           </button>
           <button
             type="button"
             className="px-2 py-1 rounded hover:bg-slate-700"
-            onClick={() => {
-              setChatInput(`请分析这段文字：${selection.text}`);
-              setSelection(null);
-              setTimeout(() => chatInputRef.current?.focus(), 100);
-            }}
+            onClick={() => handleCite(selection.text, 'free')}
           >
             提问
           </button>
@@ -587,4 +699,3 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
     </main>
   );
 }
-

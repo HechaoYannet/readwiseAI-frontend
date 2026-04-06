@@ -17,6 +17,10 @@ interface TrainingStore {
   diagnosisResults: Record<string, DiagnosisResult>;
   powerScore: PowerScore | null;
   trainingHistory: TrainingGroup[];
+  /** Group IDs that have been saved to the server (to avoid duplicate saves) */
+  savedGroupIds: string[];
+  /** Persistent session ID for the home page AI chat (chatting type) */
+  homeChatSessionId: string | null;
 
   startGroup: (group: TrainingGroup) => void;
   setCurrentArticle: (index: number) => void;
@@ -27,6 +31,8 @@ interface TrainingStore {
   resetGroup: () => void;
   setPowerScore: (score: PowerScore) => void;
   addToHistory: (group: TrainingGroup) => void;
+  markGroupSaved: (groupId: string) => void;
+  setHomeChatSessionId: (sessionId: string) => void;
 }
 
 export const useTrainingStore = create<TrainingStore>()(
@@ -40,6 +46,8 @@ export const useTrainingStore = create<TrainingStore>()(
       diagnosisResults: {},
       powerScore: null,
       trainingHistory: [],
+      savedGroupIds: [],
+      homeChatSessionId: null,
 
       startGroup: (group) =>
         set({
@@ -141,6 +149,15 @@ export const useTrainingStore = create<TrainingStore>()(
         set((s) => ({
           trainingHistory: [group, ...s.trainingHistory].slice(0, 20),
         })),
+
+      markGroupSaved: (groupId) =>
+        set((s) => ({
+          savedGroupIds: s.savedGroupIds.includes(groupId)
+            ? s.savedGroupIds
+            : [...s.savedGroupIds, groupId].slice(-50),
+        })),
+
+      setHomeChatSessionId: (sessionId) => set({ homeChatSessionId: sessionId }),
     }),
     {
       name: 'readwise-training',
@@ -153,6 +170,8 @@ export const useTrainingStore = create<TrainingStore>()(
         diagnosisResults: state.diagnosisResults,
         powerScore: state.powerScore,
         trainingHistory: state.trainingHistory,
+        savedGroupIds: state.savedGroupIds,
+        homeChatSessionId: state.homeChatSessionId,
       }),
     },
   ),

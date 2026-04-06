@@ -946,6 +946,29 @@ export async function deleteSession(token: string, sessionId: string): Promise<{
     return res.json() as Promise<{ message: string }>;
 }
 
+export interface ConversationMessage {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+export interface SessionHistoryResponse {
+    session_id: string;
+    total_messages: number;
+    returned: number;
+    history: ConversationMessage[];
+}
+
+export async function getSessionHistory(token: string, sessionId: string, limit = 40): Promise<SessionHistoryResponse> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {session_id: sessionId, total_messages: 0, returned: 0, history: []};
+    }
+    const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/history?limit=${limit}`, {headers: authHeaders(token)});
+    if (res.status === 404) return {session_id: sessionId, total_messages: 0, returned: 0, history: []};
+    if (!res.ok) throw new Error('获取会话历史失败');
+    return res.json() as Promise<SessionHistoryResponse>;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Legacy exports (kept for backward compatibility)
 // ────────────────────────────────────────────────────────────────────────────
