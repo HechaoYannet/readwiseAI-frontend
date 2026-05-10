@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import AppNav from "@/components/layout/app-nav";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   title: "ReadWise AI",
@@ -19,6 +20,7 @@ export default function RootLayout({
         {children}
         <AppNav />
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
