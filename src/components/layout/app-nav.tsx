@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, Gauge, Home, Settings, UserRound } from 'lucide-react';
+import { BookOpen, Gauge, Home, Settings, Shield, UserRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/lib/auth-store';
 
-const navItems = [
+const baseNavItems = [
   { href: '/', label: '首页', icon: Home },
   { href: '/train', label: '训练', icon: BookOpen },
   { href: '/dashboard', label: '仪表盘', icon: Gauge },
@@ -18,8 +19,13 @@ const HIDDEN_ROUTES = ['/login'];
 
 export default function AppNav() {
   const pathname = usePathname();
+  const user = useAuthStore((state) => state.user);
 
   if (HIDDEN_ROUTES.includes(pathname)) return null;
+
+  const navItems = user?.role === 'admin'
+    ? [...baseNavItems.slice(0, 3), { href: '/admin', label: '后台', icon: Shield }, ...baseNavItems.slice(3)]
+    : baseNavItems;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur-sm">

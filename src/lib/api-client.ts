@@ -973,6 +973,369 @@ export async function getSessionHistory(token: string, sessionId: string, limit 
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Admin API – 9. 管理后台
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface AdminUser extends UserProfile {
+    phone?: string;
+    email?: string;
+}
+
+export interface AdminUsersResponse {
+    count: number;
+    users: AdminUser[];
+}
+
+export interface AdminInvite {
+    code: string;
+    created_by: string;
+    max_uses: number;
+    used_count: number;
+    used_by: string[];
+    expires_at?: string | null;
+    created_at: string;
+    note: string;
+    revoked: boolean;
+    is_valid: boolean;
+}
+
+export interface AdminInvitesResponse {
+    count: number;
+    invites: AdminInvite[];
+}
+
+export interface AdminSessionSummary {
+    session_id: string;
+    session_type: 'training' | 'chatting';
+    created_at: string;
+    updated_at: string;
+    article_count: number;
+    message_count: number;
+    agent_info_count: number;
+}
+
+export interface AdminUserSessionsResponse {
+    user_id: string;
+    count: number;
+    sessions: AdminSessionSummary[];
+}
+
+export interface AdminLLMConfig {
+    provider: 'openai' | 'deepseek' | 'stub';
+    model: string;
+    temperature: number;
+    base_url: string;
+    has_api_key: boolean;
+    api_key_source: 'runtime' | 'environment' | 'unset';
+    runtime_overrides: {
+        provider: boolean;
+        model: boolean;
+        temperature: boolean;
+        base_url: boolean;
+    };
+}
+
+export interface AdminUserUpdatePayload {
+    username?: string;
+    exam_region?: string;
+    grade?: string;
+    school?: string;
+    status?: 'active' | 'disabled';
+    role?: 'user' | 'admin';
+}
+
+export interface AdminInviteCreatePayload {
+    max_uses: number;
+    note?: string;
+    expires_at?: string;
+}
+
+export interface AdminLLMUpdatePayload {
+    provider: 'openai' | 'deepseek' | 'stub';
+    model?: string;
+    temperature?: number;
+    base_url?: string;
+    api_key?: string;
+}
+
+export async function adminListUsers(
+    token: string,
+    status?: 'active' | 'disabled',
+    limit = 100,
+): Promise<AdminUsersResponse> {
+    if (!API_BASE) {
+        await sleep(300);
+        const users: AdminUser[] = [
+            {
+                id: 'admin_001',
+                username: '管理员',
+                exam_region: '全国I卷',
+                grade: '高三',
+                school: 'ReadWise Lab',
+                role: 'admin',
+                status: 'active',
+                created_at: new Date().toISOString(),
+                last_login_at: new Date().toISOString(),
+            },
+            {
+                id: 'user_001',
+                username: '体验用户',
+                exam_region: '北京卷',
+                grade: '高二',
+                school: '示范高中',
+                role: 'user',
+                status: 'active',
+                created_at: new Date().toISOString(),
+                last_login_at: new Date().toISOString(),
+            },
+        ];
+        const filtered = status ? users.filter((user) => user.status === status) : users;
+        return {count: filtered.length, users: filtered.slice(0, limit)};
+    }
+    const params = new URLSearchParams({limit: String(limit)});
+    if (status) params.set('status', status);
+    const res = await fetch(`${API_BASE}/api/admin/users?${params.toString()}`, {headers: authHeaders(token)});
+    if (!res.ok) await extractApiError(res, '获取用户列表失败');
+    return res.json() as Promise<AdminUsersResponse>;
+}
+
+export async function adminUpdateUser(
+    token: string,
+    userId: string,
+    payload: AdminUserUpdatePayload,
+): Promise<AdminUser> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {
+            id: userId,
+            username: payload.username ?? '体验用户',
+            exam_region: payload.exam_region ?? '全国I卷',
+            grade: payload.grade ?? '高三',
+            school: payload.school ?? '示范高中',
+            role: payload.role ?? 'user',
+            status: payload.status ?? 'active',
+            created_at: new Date().toISOString(),
+            last_login_at: new Date().toISOString(),
+        };
+    }
+    const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+        method: 'PATCH',
+        headers: authHeaders(token),
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) await extractApiError(res, '更新用户失败');
+    return res.json() as Promise<AdminUser>;
+}
+
+export async function adminDeleteUser(token: string, userId: string): Promise<{ message: string; user_id: string }> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {message: '用户已删除', user_id: userId};
+    }
+    const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: authHeaders(token),
+    });
+    if (!res.ok) await extractApiError(res, '删除用户失败');
+    return res.json() as Promise<{ message: string; user_id: string }>;
+}
+
+export async function adminListUserSessions(token: string, userId: string, limit = 50): Promise<AdminUserSessionsResponse> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {
+            user_id: userId,
+            count: 1,
+            sessions: [
+                {
+                    session_id: 'sess_demo_1',
+                    session_type: 'training',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    article_count: 4,
+                    message_count: 6,
+                    agent_info_count: 2,
+                },
+            ],
+        };
+    }
+    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/sessions?limit=${limit}`, {
+        headers: authHeaders(token),
+    });
+    if (!res.ok) await extractApiError(res, '获取会话列表失败');
+    return res.json() as Promise<AdminUserSessionsResponse>;
+}
+
+export async function adminGetUserSessionHistory(
+    token: string,
+    userId: string,
+    sessionId: string,
+    limit = 40,
+): Promise<SessionHistoryResponse> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {
+            session_id: sessionId,
+            total_messages: 2,
+            returned: 2,
+            history: [
+                {role: 'user', content: '请分析这道题'},
+                {role: 'assistant', content: '错误原因是定位句理解偏差。'},
+            ],
+        };
+    }
+    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/sessions/${sessionId}/history?limit=${limit}`, {
+        headers: authHeaders(token),
+    });
+    if (!res.ok) await extractApiError(res, '获取会话历史失败');
+    return res.json() as Promise<SessionHistoryResponse>;
+}
+
+export async function adminDeleteUserSession(
+    token: string,
+    userId: string,
+    sessionId: string,
+): Promise<{ message: string; user_id: string; session_id: string }> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {message: '会话已删除', user_id: userId, session_id: sessionId};
+    }
+    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers: authHeaders(token),
+    });
+    if (!res.ok) await extractApiError(res, '删除会话失败');
+    return res.json() as Promise<{ message: string; user_id: string; session_id: string }>;
+}
+
+export async function adminListInvites(token: string, limit = 100): Promise<AdminInvitesResponse> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {
+            count: 2,
+            invites: [
+                {
+                    code: 'READ2026',
+                    created_by: 'admin_001',
+                    max_uses: 5,
+                    used_count: 1,
+                    used_by: ['user_001'],
+                    expires_at: null,
+                    created_at: new Date().toISOString(),
+                    note: '首批内测',
+                    revoked: false,
+                    is_valid: true,
+                },
+                {
+                    code: 'OLD00001',
+                    created_by: 'admin_001',
+                    max_uses: 1,
+                    used_count: 1,
+                    used_by: ['user_009'],
+                    expires_at: null,
+                    created_at: new Date().toISOString(),
+                    note: '已用完',
+                    revoked: true,
+                    is_valid: false,
+                },
+            ],
+        };
+    }
+    const res = await fetch(`${API_BASE}/api/admin/invites?limit=${limit}`, {headers: authHeaders(token)});
+    if (!res.ok) await extractApiError(res, '获取邀请码失败');
+    return res.json() as Promise<AdminInvitesResponse>;
+}
+
+export async function adminCreateInvite(token: string, payload: AdminInviteCreatePayload): Promise<AdminInvite> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {
+            code: `INV${Date.now().toString().slice(-5)}`,
+            created_by: 'admin_001',
+            max_uses: payload.max_uses,
+            used_count: 0,
+            used_by: [],
+            expires_at: payload.expires_at ?? null,
+            created_at: new Date().toISOString(),
+            note: payload.note ?? '',
+            revoked: false,
+            is_valid: true,
+        };
+    }
+    const res = await fetch(`${API_BASE}/api/admin/invites`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) await extractApiError(res, '创建邀请码失败');
+    return res.json() as Promise<AdminInvite>;
+}
+
+export async function adminRevokeInvite(token: string, code: string): Promise<AdminInvite> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {
+            code,
+            created_by: 'admin_001',
+            max_uses: 1,
+            used_count: 0,
+            used_by: [],
+            expires_at: null,
+            created_at: new Date().toISOString(),
+            note: '',
+            revoked: true,
+            is_valid: false,
+        };
+    }
+    const res = await fetch(`${API_BASE}/api/admin/invites/${code}/revoke`, {
+        method: 'POST',
+        headers: authHeaders(token),
+    });
+    if (!res.ok) await extractApiError(res, '撤销邀请码失败');
+    return res.json() as Promise<AdminInvite>;
+}
+
+export async function adminGetLlmConfig(token: string): Promise<AdminLLMConfig> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            temperature: 0.7,
+            base_url: 'https://api.openai.com/v1',
+            has_api_key: true,
+            api_key_source: 'runtime',
+            runtime_overrides: {provider: true, model: true, temperature: true, base_url: true},
+        };
+    }
+    const res = await fetch(`${API_BASE}/api/admin/llm-config`, {headers: authHeaders(token)});
+    if (!res.ok) await extractApiError(res, '获取 AI 配置失败');
+    return res.json() as Promise<AdminLLMConfig>;
+}
+
+export async function adminUpdateLlmConfig(token: string, payload: AdminLLMUpdatePayload): Promise<AdminLLMConfig> {
+    if (!API_BASE) {
+        await sleep(300);
+        return {
+            provider: payload.provider,
+            model: payload.model ?? 'gpt-4o-mini',
+            temperature: payload.temperature ?? 0.7,
+            base_url: payload.base_url ?? '',
+            has_api_key: Boolean(payload.api_key),
+            api_key_source: payload.api_key ? 'runtime' : 'unset',
+            runtime_overrides: {provider: true, model: true, temperature: true, base_url: Boolean(payload.base_url)},
+        };
+    }
+    const res = await fetch(`${API_BASE}/api/admin/llm-config`, {
+        method: 'PUT',
+        headers: authHeaders(token),
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) await extractApiError(res, '更新 AI 配置失败');
+    return res.json() as Promise<AdminLLMConfig>;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Legacy exports (kept for backward compatibility)
 // ────────────────────────────────────────────────────────────────────────────
 

@@ -133,7 +133,7 @@ export default function LoginPage() {
         created_at: new Date().toISOString(),
         last_login_at: new Date().toISOString(),
       });
-      router.replace('/');
+      router.replace('/admin');
     } catch (err) {
       setError(err instanceof Error ? err.message : '口令错误');
     } finally {
