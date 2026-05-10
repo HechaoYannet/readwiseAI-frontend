@@ -79,7 +79,6 @@ export default function AdminPage() {
   const [llmModel, setLlmModel] = useState('');
   const [llmTemperature, setLlmTemperature] = useState('0.7');
   const [llmBaseUrl, setLlmBaseUrl] = useState('');
-  const [llmApiKey, setLlmApiKey] = useState('');
   const [editingUser, setEditingUser] = useState({
     username: '',
     exam_region: '',
@@ -279,7 +278,7 @@ export default function AdminPage() {
 
   async function handleDeleteUser(userId: string) {
     if (!token) return;
-    const confirmed = window.confirm('删除用户会同时清理其工作会话，是否继续？');
+    const confirmed = window.confirm('删除用户会同时清理其工作会话、长期记忆和训练索引，且不可恢复，是否继续？');
     if (!confirmed) return;
     try {
       await adminDeleteUser(token, userId);
@@ -380,10 +379,8 @@ export default function AdminPage() {
         model: llmModel.trim() || undefined,
         temperature,
         base_url: llmBaseUrl.trim() || undefined,
-        api_key: llmApiKey.trim() || undefined,
       });
       setLlmConfig(updated);
-      setLlmApiKey('');
       setToast({kind: 'success', message: 'AI 配置已更新并刷新生效'});
     } catch (error) {
       setToast({kind: 'error', message: error instanceof Error ? error.message : 'AI 配置更新失败'});
@@ -682,7 +679,7 @@ export default function AdminPage() {
                 <Cpu className="h-5 w-5 text-violet-500" />
                 AI 配置
               </CardTitle>
-              <CardDescription>切换 OpenAI / DeepSeek / Stub。密钥只显示是否存在，不回显原文。</CardDescription>
+              <CardDescription>切换 OpenAI / DeepSeek / Stub。密钥只允许由服务端环境变量提供，前端不再提交或存储。</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -715,16 +712,6 @@ export default function AdminPage() {
                 </label>
               </div>
 
-              <label className="space-y-1.5 text-sm">
-                <span className="text-slate-600">新 API Key</span>
-                <Input
-                  type="password"
-                  value={llmApiKey}
-                  onChange={(e) => setLlmApiKey(e.target.value)}
-                  placeholder={llmConfig?.has_api_key ? '已存在密钥，如需轮换请填写新值' : '输入新的 API Key'}
-                />
-              </label>
-
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 <div className="flex items-center justify-between">
                   <span>当前密钥状态</span>
@@ -735,6 +722,9 @@ export default function AdminPage() {
                 <div className="mt-2 flex items-center justify-between">
                   <span>密钥来源</span>
                   <span>{llmConfig?.api_key_source ?? 'unset'}</span>
+                </div>
+                <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-500">
+                  切换到 `openai` 或 `deepseek` 前，请先在后端部署环境中配置对应的 `OPENAI_API_KEY` 或 `DEEPSEEK_API_KEY`。
                 </div>
               </div>
 

@@ -237,7 +237,7 @@ export async function loginUser(loginId: string, password: string): Promise<Logi
 export async function refreshToken(token: string): Promise<{ access_token: string; token_type: string }> {
     const apiBase = requireApiBase();
     const res = await fetch(`${apiBase}/api/auth/refresh`, {method: 'POST', headers: authHeaders(token)});
-    if (!res.ok) throw new Error('Token 刷新失败');
+    if (!res.ok) await extractApiError(res, 'Token 刷新失败');
     return res.json() as Promise<{ access_token: string; token_type: string }>;
 }
 
@@ -862,7 +862,7 @@ export interface AdminLLMConfig {
     temperature: number;
     base_url: string;
     has_api_key: boolean;
-    api_key_source: 'runtime' | 'environment' | 'unset';
+    api_key_source: 'environment' | 'unset';
     runtime_overrides: {
         provider: boolean;
         model: boolean;
@@ -891,7 +891,6 @@ export interface AdminLLMUpdatePayload {
     model?: string;
     temperature?: number;
     base_url?: string;
-    api_key?: string;
 }
 
 export async function adminListUsers(
