@@ -170,7 +170,15 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [aiMessages]);
 
-  if (!token) return null;
+  if (!token) {
+    return (
+      <main className="flex flex-1 items-center justify-center px-4 py-10">
+        <div className="rounded-xl border border-slate-200 bg-white px-6 py-4 text-sm text-slate-500 shadow-sm">
+          正在跳转到登录页...
+        </div>
+      </main>
+    );
+  }
 
   async function switchSession(sessionId: string) {
     if (!token) return;
