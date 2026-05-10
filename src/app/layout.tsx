@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="zh-CN" className="h-full antialiased">
       <body className="flex min-h-full flex-col pb-16">
         {children}
         <AppNav />

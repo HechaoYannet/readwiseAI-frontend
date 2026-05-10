@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { BookOpenText, Eye, EyeOff, KeyRound, Loader2, ShieldCheck, UserPlus } from 'lucide-react';
+import { BookOpenText, Eye, EyeOff, Loader2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -15,18 +15,14 @@ type Tab = 'login' | 'register';
 const EXAM_REGIONS = ['全国I卷', '全国II卷', '全国乙卷', '全国甲卷', '北京卷', '上海卷', '浙江卷', '天津卷', '江苏卷', '广东卷'];
 const GRADES = ['高一', '高二', '高三'];
 
-// Admin login: click the logo 5 times within 3 seconds
-const ADMIN_CLICK_COUNT = 5;
-const ADMIN_CLICK_WINDOW_MS = 3000;
-
 export default function LoginPage() {
   const router = useRouter();
-  const { setToken, setUser, token } = useAuthStore();
+  const { setToken, setUser, token, user } = useAuthStore();
 
-  // Redirect if already logged in
   useEffect(() => {
-    if (token) router.replace('/');
-  }, [token, router]);
+    if (!token) return;
+    router.replace(user?.role === 'admin' ? '/admin' : '/');
+  }, [token, user?.role, router]);
 
   const [tab, setTab] = useState<Tab>('login');
   const [showPwd, setShowPwd] = useState(false);
@@ -35,11 +31,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // ── Login form state ──────────────────────────────────────────────────────
   const [loginId, setLoginId] = useState('');
   const [loginPwd, setLoginPwd] = useState('');
 
-  // ── Register form state ──────────────────────────────────────────────────
   const [inviteCode, setInviteCode] = useState('');
   const [inviteValid, setInviteValid] = useState<boolean | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -50,26 +44,6 @@ export default function LoginPage() {
   const [grade, setGrade] = useState('高三');
   const [school, setSchool] = useState('');
 
-  // ── Hidden admin login ───────────────────────────────────────────────────
-  const logoClickTimesRef = useRef<number[]>([]);
-  const [adminMode, setAdminMode] = useState(false);
-  const [adminCode, setAdminCode] = useState('');
-  const [showAdminPwd, setShowAdminPwd] = useState(false);
-
-  const handleLogoClick = useCallback(() => {
-    const now = Date.now();
-    logoClickTimesRef.current = [
-      ...logoClickTimesRef.current.filter((t) => now - t < ADMIN_CLICK_WINDOW_MS),
-      now,
-    ];
-    if (logoClickTimesRef.current.length >= ADMIN_CLICK_COUNT) {
-      logoClickTimesRef.current = [];
-      setAdminMode((v) => !v);
-      setError(null);
-    }
-  }, []);
-
-  // ── Verify invite code ────────────────────────────────────────────────────
   async function handleVerifyInvite() {
     if (!inviteCode.trim()) return;
     setInviteLoading(true);
@@ -84,7 +58,6 @@ export default function LoginPage() {
     }
   }
 
-  // ── Login submit ──────────────────────────────────────────────────────────
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -105,7 +78,7 @@ export default function LoginPage() {
         created_at: new Date().toISOString(),
         last_login_at: new Date().toISOString(),
       });
-      router.replace('/');
+      router.replace((res.role ?? 'user') === 'admin' ? '/admin' : '/');
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败，请重试');
     } finally {
@@ -113,35 +86,6 @@ export default function LoginPage() {
     }
   }
 
-  // ── Admin login submit ────────────────────────────────────────────────────
-  async function handleAdminLogin(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!adminCode.trim()) { setError('请输入管理员口令'); return; }
-    setLoading(true);
-    try {
-      const res = await loginUser('admin', adminCode.trim());
-      setToken(res.access_token);
-      setUser({
-        id: res.user_id,
-        username: res.username,
-        role: 'admin',
-        exam_region: '',
-        grade: '',
-        school: '',
-        status: 'active',
-        created_at: new Date().toISOString(),
-        last_login_at: new Date().toISOString(),
-      });
-      router.replace('/admin');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '口令错误');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // ── Register submit ───────────────────────────────────────────────────────
   async function handleRegister(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -175,7 +119,7 @@ export default function LoginPage() {
         last_login_at: new Date().toISOString(),
       });
       setSuccess('注册成功，正在进入…');
-      router.replace('/');
+      router.replace((res.role ?? 'user') === 'admin' ? '/admin' : '/');
     } catch (err) {
       setError(err instanceof Error ? err.message : '注册失败，请重试');
     } finally {
@@ -185,108 +129,46 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-sky-50 via-white to-slate-50 px-4 py-10">
-      {/* Logo — click 5× quickly to reveal admin login */}
-      <button
-        type="button"
-        onClick={handleLogoClick}
-        aria-label="ReadWise AI Logo"
-        className="mb-8 flex flex-col items-center gap-2 select-none focus:outline-none"
-      >
+      <div className="mb-8 flex flex-col items-center gap-2 select-none">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#1E3A5F] shadow-lg">
           <BookOpenText className="h-8 w-8 text-white" />
         </div>
-        <span className="text-xl font-bold text-[#1E3A5F] tracking-tight">ReadWise AI</span>
+        <span className="text-xl font-bold tracking-tight text-[#1E3A5F]">ReadWise AI</span>
         <span className="text-xs text-slate-400">智能英语阅读训练平台</span>
-      </button>
+      </div>
 
-      {/* Card */}
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl">
-
-        {/* Admin mode banner */}
-        {adminMode && (
-          <div className="flex items-center gap-2 rounded-t-2xl bg-amber-50 border-b border-amber-200 px-6 py-3">
-            <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
-            <span className="text-xs font-semibold text-amber-700">管理员入口</span>
+        <div className="flex border-b border-slate-100">
+          {(['login', 'register'] as Tab[]).map((t) => (
             <button
+              key={t}
               type="button"
-              onClick={() => { setAdminMode(false); setError(null); }}
-              className="ml-auto text-amber-500 hover:text-amber-700 text-xs"
+              onClick={() => { setTab(t); setError(null); }}
+              className={cn(
+                'flex-1 py-3.5 text-sm font-semibold transition-colors',
+                tab === t
+                  ? 'border-b-2 border-sky-500 text-sky-600'
+                  : 'text-slate-400 hover:text-slate-600',
+              )}
             >
-              关闭
+              {t === 'login' ? '登录' : '注册账号'}
             </button>
-          </div>
-        )}
-
-        {/* Tabs (only when not in admin mode) */}
-        {!adminMode && (
-          <div className="flex border-b border-slate-100">
-            {(['login', 'register'] as Tab[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => { setTab(t); setError(null); }}
-                className={cn(
-                  'flex-1 py-3.5 text-sm font-semibold transition-colors',
-                  tab === t
-                    ? 'border-b-2 border-sky-500 text-sky-600'
-                    : 'text-slate-400 hover:text-slate-600',
-                )}
-              >
-                {t === 'login' ? '登录' : '注册账号'}
-              </button>
-            ))}
-          </div>
-        )}
+          ))}
+        </div>
 
         <div className="px-8 py-7">
-          {/* Error / Success messages */}
           {error && (
-            <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
             </div>
           )}
           {success && (
-            <div className="mb-4 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700">
+            <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               {success}
             </div>
           )}
 
-          {/* ── Admin login form ── */}
-          {adminMode ? (
-            <form onSubmit={handleAdminLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <label htmlFor="admin-code" className="block text-sm font-medium text-slate-700">
-                  管理员口令
-                </label>
-                <div className="relative">
-                  <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    id="admin-code"
-                    type={showAdminPwd ? 'text' : 'password'}
-                    value={adminCode}
-                    onChange={(e) => setAdminCode(e.target.value)}
-                    placeholder="请输入管理员口令"
-                    className="pl-9 pr-10"
-                    autoComplete="off"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowAdminPwd((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    aria-label={showAdminPwd ? '隐藏' : '显示'}
-                  >
-                    {showAdminPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                管理员登录
-              </Button>
-            </form>
-          ) : tab === 'login' ? (
-            /* ── User login form ── */
+          {tab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-1.5">
                 <label htmlFor="login-id" className="block text-sm font-medium text-slate-700">
@@ -333,9 +215,7 @@ export default function LoginPage() {
               </Button>
             </form>
           ) : (
-            /* ── Register form ── */
             <form onSubmit={handleRegister} className="space-y-4">
-              {/* Invite code */}
               <div className="space-y-1.5">
                 <label htmlFor="invite-code" className="block text-sm font-medium text-slate-700">
                   邀请码 <span className="text-red-500">*</span>
@@ -368,10 +248,9 @@ export default function LoginPage() {
                 </div>
                 {inviteValid === true && <p className="text-xs text-emerald-600">✓ 邀请码有效</p>}
                 {inviteValid === false && <p className="text-xs text-red-500">✗ 邀请码无效或已使用</p>}
-                <p id="invite-code-hint" className="text-xs text-slate-400 sr-only">输入将自动转为大写</p>
+                <p id="invite-code-hint" className="sr-only text-xs text-slate-400">输入将自动转为大写</p>
               </div>
 
-              {/* Username */}
               <div className="space-y-1.5">
                 <label htmlFor="reg-username" className="block text-sm font-medium text-slate-700">
                   用户名 <span className="text-red-500">*</span>
@@ -386,7 +265,6 @@ export default function LoginPage() {
                 />
               </div>
 
-              {/* Password */}
               <div className="space-y-1.5">
                 <label htmlFor="reg-pwd" className="block text-sm font-medium text-slate-700">
                   密码 <span className="text-red-500">*</span>
@@ -412,7 +290,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Confirm Password */}
               <div className="space-y-1.5">
                 <label htmlFor="reg-confirm-pwd" className="block text-sm font-medium text-slate-700">
                   确认密码 <span className="text-red-500">*</span>
@@ -444,7 +321,6 @@ export default function LoginPage() {
                 )}
               </div>
 
-              {/* Exam region */}
               <div className="space-y-1.5">
                 <label htmlFor="exam-region" className="block text-sm font-medium text-slate-700">
                   考试地区
@@ -461,7 +337,6 @@ export default function LoginPage() {
                 </select>
               </div>
 
-              {/* Grade + School */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label htmlFor="grade" className="block text-sm font-medium text-slate-700">

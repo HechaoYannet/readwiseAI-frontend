@@ -1,4 +1,3 @@
-import {createMockTrainingGroup} from './mock-data';
 import type {
     TrainingGroup,
     DiagnosisResult,
@@ -36,6 +35,13 @@ async function extractApiError(res: Response, fallback: string): Promise<never> 
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function requireApiBase(): string {
+    if (!API_BASE) {
+        throw new Error('前端未配置 API 地址');
+    }
+    return API_BASE;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -196,11 +202,8 @@ export interface DiagnosisResponse {
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function verifyInvite(inviteCode: string): Promise<{ valid: boolean; message: string }> {
-    if (!API_BASE) {
-        const valid = /^[A-Z0-9]{6,12}$/i.test(inviteCode);
-        return {valid, message: valid ? '邀请码有效' : '邀请码无效'};
-    }
-    const res = await fetch(`${API_BASE}/api/auth/verify-invite`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/auth/verify-invite`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({invite_code: inviteCode}),
@@ -210,17 +213,8 @@ export async function verifyInvite(inviteCode: string): Promise<{ valid: boolean
 }
 
 export async function registerUser(payload: RegisterPayload): Promise<LoginResponse> {
-    if (!API_BASE) {
-        await sleep(800);
-        return {
-            user_id: `mock_${Date.now()}`,
-            username: payload.username,
-            access_token: `mock_token_${Date.now()}`,
-            token_type: 'bearer',
-            role: 'user',
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/auth/register`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/auth/register`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload),
@@ -230,29 +224,8 @@ export async function registerUser(payload: RegisterPayload): Promise<LoginRespo
 }
 
 export async function loginUser(loginId: string, password: string): Promise<LoginResponse> {
-    if (!API_BASE) {
-        await sleep(600);
-        if (loginId === 'admin' && password === 'admin') {
-            return {
-                user_id: 'admin_001',
-                username: '管理员',
-                access_token: `mock_admin_token_${Date.now()}`,
-                token_type: 'bearer',
-                role: 'admin'
-            };
-        }
-        if (password.length >= 6) {
-            return {
-                user_id: `mock_${Date.now()}`,
-                username: loginId,
-                access_token: `mock_token_${Date.now()}`,
-                token_type: 'bearer',
-                role: 'user'
-            };
-        }
-        throw new Error('用户名或密码错误');
-    }
-    const res = await fetch(`${API_BASE}/api/auth/login`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/auth/login`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({login_id: loginId, password}),
@@ -262,8 +235,8 @@ export async function loginUser(loginId: string, password: string): Promise<Logi
 }
 
 export async function refreshToken(token: string): Promise<{ access_token: string; token_type: string }> {
-    if (!API_BASE) return {access_token: `mock_token_${Date.now()}`, token_type: 'bearer'};
-    const res = await fetch(`${API_BASE}/api/auth/refresh`, {method: 'POST', headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/auth/refresh`, {method: 'POST', headers: authHeaders(token)});
     if (!res.ok) throw new Error('Token 刷新失败');
     return res.json() as Promise<{ access_token: string; token_type: string }>;
 }
@@ -273,41 +246,15 @@ export async function refreshToken(token: string): Promise<{ access_token: strin
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function getMe(token: string): Promise<UserProfile> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            id: 'mock_001',
-            username: '张三',
-            exam_region: '全国I卷',
-            grade: '高三',
-            school: '示范高中',
-            role: 'user',
-            status: 'active',
-            created_at: new Date().toISOString(),
-            last_login_at: new Date().toISOString()
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/users/me`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/users/me`, {headers: authHeaders(token)});
     if (!res.ok) throw new Error('获取用户信息失败');
     return res.json() as Promise<UserProfile>;
 }
 
 export async function updateMe(token: string, payload: UpdateMePayload): Promise<UserProfile> {
-    if (!API_BASE) {
-        await sleep(500);
-        return {
-            id: 'mock_001',
-            username: payload.username ?? '张三',
-            exam_region: payload.exam_region ?? '全国I卷',
-            grade: payload.grade ?? '高三',
-            school: payload.school ?? '示范高中',
-            role: 'user',
-            status: 'active',
-            created_at: new Date().toISOString(),
-            last_login_at: new Date().toISOString()
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/users/me`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/users/me`, {
         method: 'PUT',
         headers: authHeaders(token),
         body: JSON.stringify(payload)
@@ -317,12 +264,8 @@ export async function updateMe(token: string, payload: UpdateMePayload): Promise
 }
 
 export async function changePassword(token: string, payload: ChangePasswordPayload): Promise<{ message: string }> {
-    if (!API_BASE) {
-        await sleep(500);
-        if (payload.old_password.length < 6) throw new Error('旧密码错误');
-        return {message: '密码修改成功，请重新登录'};
-    }
-    const res = await fetch(`${API_BASE}/api/users/password`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/users/password`, {
         method: 'PUT',
         headers: authHeaders(token),
         body: JSON.stringify(payload)
@@ -332,11 +275,8 @@ export async function changePassword(token: string, payload: ChangePasswordPaylo
 }
 
 export async function getUserStats(token: string): Promise<UserStats> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {user_id: 'mock_001', mistake_count: 15, due_for_review: 3, latest_power: 85.5, power_records: 12};
-    }
-    const res = await fetch(`${API_BASE}/api/users/stats`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/users/stats`, {headers: authHeaders(token)});
     if (!res.ok) throw new Error('获取统计失败');
     return res.json() as Promise<UserStats>;
 }
@@ -492,10 +432,7 @@ export async function generateTrainingGroup(
     difficulty = 'L2',
     topic?: string,
 ): Promise<TrainingGroup> {
-    if (!API_BASE) {
-        await sleep(1500 + Math.random() * 1000);
-        return createMockTrainingGroup(difficulty);
-    }
+    requireApiBase();
 
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -507,22 +444,11 @@ export async function generateTrainingGroup(
         user_level: difficulty,
         ...(topic ? {topic} : {}),
     });
-    //} catch(error) {
-    //console.error(`失败原因：${error instanceof Error ? error.message : '未知错误'}`);
-    //await sleep(500);
-    //return createMockTrainingGroup(difficulty);
-    //}
-
     const result = await pollResult(token, initResp.request_id, 100, 3000);
     if (result.status === 'completed' && result.results) {
-        // try {
-            return mapTrainingSetResult(result.results, difficulty, initResp.session_id ?? sessionId);
-        // } catch {
-        //     return createMockTrainingGroup(difficulty);
-        // }
+        return mapTrainingSetResult(result.results, difficulty, initResp.session_id ?? sessionId);
     }
-
-    return createMockTrainingGroup(difficulty);
+    throw new Error(result.error_log?.join('；') ?? '训练生成失败');
 }
 
 // ── Submit single question attempt for diagnosis ──────────────────────────────
@@ -531,22 +457,6 @@ export interface AttemptPayload {
     group_id: string;
     article_id: string;
     question_attempts: QuestionAttempt[];
-}
-
-function buildMockDiagnosis(questions: TrainingQuestion[], attempts: QuestionAttempt[]): Record<string, DiagnosisResult> {
-    const results: Record<string, DiagnosisResult> = {};
-    for (const attempt of attempts) {
-        if (!attempt.is_correct) {
-            const question = questions.find((q) => q.question_id === attempt.question_id);
-            results[attempt.question_id] = {
-                error_category: question?.question_type === 'vocabulary' ? '词义理解错误' : '细节定位错误',
-                evidence_sentence: question?.explanation ?? '请仔细阅读原文相关段落。',
-                fix_suggestion: '建议回顾原文对应段落，注意关键词和上下文语义。',
-                similar_distractor: attempt.user_answer,
-            };
-        }
-    }
-    return results;
 }
 
 export async function submitAttemptDiagnosis(
@@ -558,10 +468,8 @@ export async function submitAttemptDiagnosis(
     const questions = article.questions;
     const wrongAttempts = attempts.filter((a) => !a.is_correct);
 
-    if (!API_BASE || wrongAttempts.length === 0) {
-        await sleep(wrongAttempts.length > 0 ? 800 : 0);
-        return buildMockDiagnosis(questions, attempts);
-    }
+    requireApiBase();
+    if (wrongAttempts.length === 0) return {};
 
     const diagnosisMap: Record<string, DiagnosisResult> = {};
 
@@ -617,17 +525,11 @@ export async function submitAttemptDiagnosis(
                     }
                 }
             } catch {
-                const fallback = buildMockDiagnosis(questions, [attempt]);
-                Object.assign(diagnosisMap, fallback);
+                return;
             }
         }),
     );
-
-    const missingFallback = buildMockDiagnosis(
-        questions,
-        wrongAttempts.filter((a) => !diagnosisMap[a.question_id]),
-    );
-    return {...missingFallback, ...diagnosisMap};
+    return diagnosisMap;
 }
 
 // Legacy wrapper kept for backward compatibility
@@ -635,13 +537,9 @@ export async function submitAttempt(
     payload: AttemptPayload,
     questions: TrainingQuestion[],
 ): Promise<DiagnosisResponse> {
-    if (!API_BASE) {
-        await sleep(800);
-        const results = buildMockDiagnosis(questions, payload.question_attempts);
-        return {attempt_id: `mock_${Date.now()}`, status: 'completed', results};
-    }
-    const results = buildMockDiagnosis(questions, payload.question_attempts);
-    return {attempt_id: `mock_${Date.now()}`, status: 'completed', results};
+    void payload;
+    void questions;
+    throw new Error('submitAttempt 已废弃，请改用 submitAttemptDiagnosis');
 }
 
 // ── QA API (POST /api/attempt with request_type: qa) ─────────────────────────
@@ -650,17 +548,7 @@ export async function submitQA(
     token: string,
     payload: QAPayload,
 ): Promise<string> {
-    if (!API_BASE) {
-        await sleep(800);
-        const stubs: Record<QAPayload['query_type'], string> = {
-            word: '该词的含义是：（AI 功能需连接后端）',
-            sentence: '长难句分析：（AI 功能需连接后端）',
-            grammar: '语法解释：（AI 功能需连接后端）',
-            translate: '翻译结果：（AI 功能需连接后端）',
-            free: 'AI 回答：（AI 功能需连接后端）',
-        };
-        return stubs[payload.query_type] ?? 'AI 功能需连接后端';
-    }
+    requireApiBase();
     try {
         const initResp = await postAttempt(token, payload as unknown as Record<string, unknown>);
         const result = await pollResult(token, initResp.request_id, 20, 2000);
@@ -729,11 +617,8 @@ export async function submitQA(
 // 7.1 训练记录
 
 export async function getTrainingRecords(token: string, limit = 20): Promise<TrainingRecordListResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {user_id: 'mock_001', total: 0, records: []};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/training?limit=${limit}`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/training?limit=${limit}`, {headers: authHeaders(token)});
     if (!res.ok) throw new Error('获取训练记录失败');
     return res.json() as Promise<TrainingRecordListResponse>;
 }
@@ -742,11 +627,8 @@ export async function addTrainingRecord(token: string, record: TrainingRecord): 
     message: string;
     record: TrainingRecord
 }> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {message: '训练记录已保存', record};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/training`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/training`, {
         method: 'POST',
         headers: authHeaders(token),
         body: JSON.stringify(record),
@@ -766,27 +648,21 @@ export interface MistakeFilters {
 }
 
 export async function getMistakes(token: string, filters: MistakeFilters = {}): Promise<MistakeListResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {user_id: 'mock_001', total: 0, returned: 0, mistakes: []};
-    }
+    const apiBase = requireApiBase();
     const params = new URLSearchParams();
     if (filters.keyword) params.set('keyword', filters.keyword);
     if (filters.error_category) params.set('error_category', filters.error_category);
     if (filters.question_type) params.set('question_type', filters.question_type);
     if (filters.difficulty) params.set('difficulty', filters.difficulty);
     if (filters.limit) params.set('limit', String(filters.limit));
-    const res = await fetch(`${API_BASE}/api/memory/mistakes?${params}`, {headers: authHeaders(token)});
+    const res = await fetch(`${apiBase}/api/memory/mistakes?${params}`, {headers: authHeaders(token)});
     if (!res.ok) throw new Error('获取错题失败');
     return res.json() as Promise<MistakeListResponse>;
 }
 
 export async function getDueMistakes(token: string, limit = 10): Promise<DueMistakesResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {user_id: 'mock_001', due_count: 0, mistakes: []};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/mistakes/due?limit=${limit}`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/mistakes/due?limit=${limit}`, {headers: authHeaders(token)});
     if (!res.ok) throw new Error('获取待复习错题失败');
     return res.json() as Promise<DueMistakesResponse>;
 }
@@ -795,11 +671,8 @@ export async function addMistake(token: string, mistake: Omit<MistakeRecord, 're
     message: string;
     mistake_id: string
 }> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {message: '错题已记录', mistake_id: mistake.mistake_id};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/mistakes`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/mistakes`, {
         method: 'POST',
         headers: authHeaders(token),
         body: JSON.stringify(mistake),
@@ -812,11 +685,8 @@ export async function updateMistake(token: string, mistakeId: string, updates: P
     message: string;
     mistake_id: string
 }> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {message: '错题已更新', mistake_id: mistakeId};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/mistakes/${mistakeId}`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/mistakes/${mistakeId}`, {
         method: 'PUT',
         headers: authHeaders(token),
         body: JSON.stringify(updates),
@@ -826,11 +696,8 @@ export async function updateMistake(token: string, mistakeId: string, updates: P
 }
 
 export async function deleteMistake(token: string, mistakeId: string): Promise<{ message: string }> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {message: '错题已删除'};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/mistakes/${mistakeId}`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/mistakes/${mistakeId}`, {
         method: 'DELETE',
         headers: authHeaders(token),
     });
@@ -841,38 +708,22 @@ export async function deleteMistake(token: string, mistakeId: string): Promise<{
 // 7.3 遗忘曲线（SM-2）
 
 export async function getCurveOverview(token: string): Promise<CurveOverview> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {user_id: 'mock_001', total_items: 0, due_count: 0};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/curve`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/curve`, {headers: authHeaders(token)});
     if (!res.ok) throw new Error('获取遗忘曲线概况失败');
     return res.json() as Promise<CurveOverview>;
 }
 
 export async function getDueCurveItems(token: string, limit = 10): Promise<DueCurveResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {user_id: 'mock_001', due_count: 0, items: []};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/curve/due?limit=${limit}`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/curve/due?limit=${limit}`, {headers: authHeaders(token)});
     if (!res.ok) throw new Error('获取待复习条目失败');
     return res.json() as Promise<DueCurveResponse>;
 }
 
 export async function submitReview(token: string, itemId: string, quality: 0 | 1 | 2 | 3 | 4 | 5): Promise<ReviewResult> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            message: '复习结果已记录',
-            item_id: itemId,
-            next_review_at: new Date(Date.now() + 86400000 * (quality >= 3 ? 6 : 1)).toISOString(),
-            interval_days: quality >= 3 ? 6 : 1,
-            repetitions: quality >= 3 ? 3 : 1,
-            easiness: quality >= 3 ? 2.5 : 1.8,
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/memory/curve/${itemId}/review`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/curve/${itemId}/review`, {
         method: 'POST',
         headers: authHeaders(token),
         body: JSON.stringify({quality}),
@@ -884,11 +735,8 @@ export async function submitReview(token: string, itemId: string, quality: 0 | 1
 // 7.4 战力值历史
 
 export async function getPowerHistory(token: string, limit = 30): Promise<PowerHistoryResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {user_id: 'mock_001', total_records: 0, latest_score: 0, history: []};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/power?limit=${limit}`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/power?limit=${limit}`, {headers: authHeaders(token)});
     if (!res.ok) throw new Error('获取战力值历史失败');
     return res.json() as Promise<PowerHistoryResponse>;
 }
@@ -897,11 +745,8 @@ export async function addPowerRecord(token: string, score: number, reason?: stri
     message: string;
     score: number
 }> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {message: '战力值已记录', score};
-    }
-    const res = await fetch(`${API_BASE}/api/memory/power`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/memory/power`, {
         method: 'POST',
         headers: authHeaders(token),
         body: JSON.stringify({score, reason}),
@@ -922,29 +767,23 @@ export interface SessionListResponse {
 }
 
 export async function getSessions(token: string, sessionType: 'training' | 'chatting' = 'training'): Promise<SessionListResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {user_id: 'mock_001', session_type: sessionType, session_ids: [], count: 0};
-    }
-    const res = await fetch(`${API_BASE}/api/sessions?session_type=${sessionType}`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/sessions?session_type=${sessionType}`, {headers: authHeaders(token)});
     if (!res.ok) throw new Error('获取会话列表失败');
     return res.json() as Promise<SessionListResponse>;
 }
 
 export async function getCurrentSession(token: string, sessionType: 'training' | 'chatting' = 'training'): Promise<Record<string, unknown> | null> {
-    if (!API_BASE) return null;
-    const res = await fetch(`${API_BASE}/api/sessions/current?session_type=${sessionType}`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/sessions/current?session_type=${sessionType}`, {headers: authHeaders(token)});
     if (res.status === 404) return null;
     if (!res.ok) throw new Error('获取当前会话失败');
     return res.json() as Promise<Record<string, unknown>>;
 }
 
 export async function deleteSession(token: string, sessionId: string): Promise<{ message: string }> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {message: '会话已删除'};
-    }
-    const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, {method: 'DELETE', headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/sessions/${sessionId}`, {method: 'DELETE', headers: authHeaders(token)});
     if (!res.ok) await extractApiError(res, '删除会话失败');
     return res.json() as Promise<{ message: string }>;
 }
@@ -962,11 +801,8 @@ export interface SessionHistoryResponse {
 }
 
 export async function getSessionHistory(token: string, sessionId: string, limit = 40): Promise<SessionHistoryResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {session_id: sessionId, total_messages: 0, returned: 0, history: []};
-    }
-    const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/history?limit=${limit}`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/sessions/${sessionId}/history?limit=${limit}`, {headers: authHeaders(token)});
     if (res.status === 404) return {session_id: sessionId, total_messages: 0, returned: 0, history: []};
     if (!res.ok) throw new Error('获取会话历史失败');
     return res.json() as Promise<SessionHistoryResponse>;
@@ -1063,38 +899,10 @@ export async function adminListUsers(
     status?: 'active' | 'disabled',
     limit = 100,
 ): Promise<AdminUsersResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        const users: AdminUser[] = [
-            {
-                id: 'admin_001',
-                username: '管理员',
-                exam_region: '全国I卷',
-                grade: '高三',
-                school: 'ReadWise Lab',
-                role: 'admin',
-                status: 'active',
-                created_at: new Date().toISOString(),
-                last_login_at: new Date().toISOString(),
-            },
-            {
-                id: 'user_001',
-                username: '体验用户',
-                exam_region: '北京卷',
-                grade: '高二',
-                school: '示范高中',
-                role: 'user',
-                status: 'active',
-                created_at: new Date().toISOString(),
-                last_login_at: new Date().toISOString(),
-            },
-        ];
-        const filtered = status ? users.filter((user) => user.status === status) : users;
-        return {count: filtered.length, users: filtered.slice(0, limit)};
-    }
+    const apiBase = requireApiBase();
     const params = new URLSearchParams({limit: String(limit)});
     if (status) params.set('status', status);
-    const res = await fetch(`${API_BASE}/api/admin/users?${params.toString()}`, {headers: authHeaders(token)});
+    const res = await fetch(`${apiBase}/api/admin/users?${params.toString()}`, {headers: authHeaders(token)});
     if (!res.ok) await extractApiError(res, '获取用户列表失败');
     return res.json() as Promise<AdminUsersResponse>;
 }
@@ -1104,21 +912,8 @@ export async function adminUpdateUser(
     userId: string,
     payload: AdminUserUpdatePayload,
 ): Promise<AdminUser> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            id: userId,
-            username: payload.username ?? '体验用户',
-            exam_region: payload.exam_region ?? '全国I卷',
-            grade: payload.grade ?? '高三',
-            school: payload.school ?? '示范高中',
-            role: payload.role ?? 'user',
-            status: payload.status ?? 'active',
-            created_at: new Date().toISOString(),
-            last_login_at: new Date().toISOString(),
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/users/${userId}`, {
         method: 'PATCH',
         headers: authHeaders(token),
         body: JSON.stringify(payload),
@@ -1128,11 +923,8 @@ export async function adminUpdateUser(
 }
 
 export async function adminDeleteUser(token: string, userId: string): Promise<{ message: string; user_id: string }> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {message: '用户已删除', user_id: userId};
-    }
-    const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: authHeaders(token),
     });
@@ -1141,25 +933,8 @@ export async function adminDeleteUser(token: string, userId: string): Promise<{ 
 }
 
 export async function adminListUserSessions(token: string, userId: string, limit = 50): Promise<AdminUserSessionsResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            user_id: userId,
-            count: 1,
-            sessions: [
-                {
-                    session_id: 'sess_demo_1',
-                    session_type: 'training',
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                    article_count: 4,
-                    message_count: 6,
-                    agent_info_count: 2,
-                },
-            ],
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/sessions?limit=${limit}`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/users/${userId}/sessions?limit=${limit}`, {
         headers: authHeaders(token),
     });
     if (!res.ok) await extractApiError(res, '获取会话列表失败');
@@ -1172,19 +947,8 @@ export async function adminGetUserSessionHistory(
     sessionId: string,
     limit = 40,
 ): Promise<SessionHistoryResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            session_id: sessionId,
-            total_messages: 2,
-            returned: 2,
-            history: [
-                {role: 'user', content: '请分析这道题'},
-                {role: 'assistant', content: '错误原因是定位句理解偏差。'},
-            ],
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/sessions/${sessionId}/history?limit=${limit}`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/users/${userId}/sessions/${sessionId}/history?limit=${limit}`, {
         headers: authHeaders(token),
     });
     if (!res.ok) await extractApiError(res, '获取会话历史失败');
@@ -1196,11 +960,8 @@ export async function adminDeleteUserSession(
     userId: string,
     sessionId: string,
 ): Promise<{ message: string; user_id: string; session_id: string }> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {message: '会话已删除', user_id: userId, session_id: sessionId};
-    }
-    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/sessions/${sessionId}`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/users/${userId}/sessions/${sessionId}`, {
         method: 'DELETE',
         headers: authHeaders(token),
     });
@@ -1209,60 +970,15 @@ export async function adminDeleteUserSession(
 }
 
 export async function adminListInvites(token: string, limit = 100): Promise<AdminInvitesResponse> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            count: 2,
-            invites: [
-                {
-                    code: 'READ2026',
-                    created_by: 'admin_001',
-                    max_uses: 5,
-                    used_count: 1,
-                    used_by: ['user_001'],
-                    expires_at: null,
-                    created_at: new Date().toISOString(),
-                    note: '首批内测',
-                    revoked: false,
-                    is_valid: true,
-                },
-                {
-                    code: 'OLD00001',
-                    created_by: 'admin_001',
-                    max_uses: 1,
-                    used_count: 1,
-                    used_by: ['user_009'],
-                    expires_at: null,
-                    created_at: new Date().toISOString(),
-                    note: '已用完',
-                    revoked: true,
-                    is_valid: false,
-                },
-            ],
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/admin/invites?limit=${limit}`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/invites?limit=${limit}`, {headers: authHeaders(token)});
     if (!res.ok) await extractApiError(res, '获取邀请码失败');
     return res.json() as Promise<AdminInvitesResponse>;
 }
 
 export async function adminCreateInvite(token: string, payload: AdminInviteCreatePayload): Promise<AdminInvite> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            code: `INV${Date.now().toString().slice(-5)}`,
-            created_by: 'admin_001',
-            max_uses: payload.max_uses,
-            used_count: 0,
-            used_by: [],
-            expires_at: payload.expires_at ?? null,
-            created_at: new Date().toISOString(),
-            note: payload.note ?? '',
-            revoked: false,
-            is_valid: true,
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/admin/invites`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/invites`, {
         method: 'POST',
         headers: authHeaders(token),
         body: JSON.stringify(payload),
@@ -1272,22 +988,8 @@ export async function adminCreateInvite(token: string, payload: AdminInviteCreat
 }
 
 export async function adminRevokeInvite(token: string, code: string): Promise<AdminInvite> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            code,
-            created_by: 'admin_001',
-            max_uses: 1,
-            used_count: 0,
-            used_by: [],
-            expires_at: null,
-            created_at: new Date().toISOString(),
-            note: '',
-            revoked: true,
-            is_valid: false,
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/admin/invites/${code}/revoke`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/invites/${code}/revoke`, {
         method: 'POST',
         headers: authHeaders(token),
     });
@@ -1296,37 +998,15 @@ export async function adminRevokeInvite(token: string, code: string): Promise<Ad
 }
 
 export async function adminGetLlmConfig(token: string): Promise<AdminLLMConfig> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            provider: 'openai',
-            model: 'gpt-4o-mini',
-            temperature: 0.7,
-            base_url: 'https://api.openai.com/v1',
-            has_api_key: true,
-            api_key_source: 'runtime',
-            runtime_overrides: {provider: true, model: true, temperature: true, base_url: true},
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/admin/llm-config`, {headers: authHeaders(token)});
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/llm-config`, {headers: authHeaders(token)});
     if (!res.ok) await extractApiError(res, '获取 AI 配置失败');
     return res.json() as Promise<AdminLLMConfig>;
 }
 
 export async function adminUpdateLlmConfig(token: string, payload: AdminLLMUpdatePayload): Promise<AdminLLMConfig> {
-    if (!API_BASE) {
-        await sleep(300);
-        return {
-            provider: payload.provider,
-            model: payload.model ?? 'gpt-4o-mini',
-            temperature: payload.temperature ?? 0.7,
-            base_url: payload.base_url ?? '',
-            has_api_key: Boolean(payload.api_key),
-            api_key_source: payload.api_key ? 'runtime' : 'unset',
-            runtime_overrides: {provider: true, model: true, temperature: true, base_url: Boolean(payload.base_url)},
-        };
-    }
-    const res = await fetch(`${API_BASE}/api/admin/llm-config`, {
+    const apiBase = requireApiBase();
+    const res = await fetch(`${apiBase}/api/admin/llm-config`, {
         method: 'PUT',
         headers: authHeaders(token),
         body: JSON.stringify(payload),
@@ -1344,6 +1024,8 @@ export async function pollDiagnosis(
     questions: TrainingQuestion[],
     attempts: QuestionAttempt[],
 ): Promise<DiagnosisResponse> {
-    const results = buildMockDiagnosis(questions, attempts);
-    return {attempt_id: attemptId, status: 'completed', results};
+    void attemptId;
+    void questions;
+    void attempts;
+    throw new Error('pollDiagnosis 已废弃，请改用 submitAttemptDiagnosis');
 }

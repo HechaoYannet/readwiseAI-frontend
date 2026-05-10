@@ -15,13 +15,13 @@ const baseNavItems = [
 ];
 
 // Routes where the bottom nav should be hidden
-const HIDDEN_ROUTES = ['/login'];
+const HIDDEN_ROUTES = ['/login', '/admin'];
 
 export default function AppNav() {
   const pathname = usePathname();
   const user = useAuthStore((state) => state.user);
 
-  if (HIDDEN_ROUTES.includes(pathname)) return null;
+  if (HIDDEN_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))) return null;
 
   const navItems = user?.role === 'admin'
     ? [...baseNavItems.slice(0, 3), { href: '/admin', label: '后台', icon: Shield }, ...baseNavItems.slice(3)]

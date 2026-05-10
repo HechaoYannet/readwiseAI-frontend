@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 export interface UserProfile {
   id: string;
@@ -46,6 +46,7 @@ export const useAuthStore = create<AuthStore>()(
     }),
     {
       name: 'readwise-auth',
+      storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
         token: state.token,
         user: state.user,
