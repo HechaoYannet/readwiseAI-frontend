@@ -123,19 +123,20 @@ export default function AdminPage() {
       router.replace('/login');
       return;
     }
+    const activeToken: string = token;
 
     let cancelled = false;
 
     async function bootstrap() {
       try {
-        const me = await getMe(token);
+        const me = await getMe(activeToken);
         if (cancelled) return;
         if (me.role !== 'admin') {
           router.replace('/');
           return;
         }
         setUser(me);
-        await loadAdminData(token, me.id);
+        await loadAdminData(activeToken, me.id);
       } catch {
         if (cancelled) return;
         logout();
