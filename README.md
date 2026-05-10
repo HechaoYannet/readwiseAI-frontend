@@ -1,50 +1,292 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReadWise AI Frontend
 
-## Getting Started
+> 智能英语阅读训练平台 — AI-Powered English Reading Training for High School Students
 
-First, run the development server:
+[![Next.js](https://img.shields.io/badge/Next.js-16.2.1-black?logo=next.js)](https://nextjs.org)
+[![React](https://img.shields.io/badge/React-19-blue?logo=react)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-38bdf8?logo=tailwindcss)](https://tailwindcss.com)
+
+---
+
+## 项目简介
+
+ReadWise AI 是一个面向高中生的 AI 驱动英语阅读训练平台。系统通过 AI 生成个性化训练文章与题目、实时分析错误原因、基于遗忘曲线（SM-2）安排复习计划，并追踪用户战力值成长曲线，帮助学生精准提升高考英语阅读能力。
+
+### 核心功能
+
+| 功能模块 | 说明 |
+|---------|------|
+| **AI 生成训练** | 按难度和主题生成 4 篇英语阅读文章及配套题目 |
+| **实时答题追踪** | 记录每题答题时间、段落阅读时长、整体训练耗时 |
+| **AI 错误诊断** | 训练完成后，对每道错题进行 AI 错因分析（错误类型、证据句、修复建议） |
+| **长难句解析** | 自动提取文章长难句，提供 AI 翻译、主干拆解和引用提问功能 |
+| **错题本** | 自动保存错题，支持筛选、搜索和查看诊断详情 |
+| **遗忘曲线复习** | 基于 SM-2 算法计划错题复习，用户评分后自动调整下次复习时间 |
+| **战力值追踪** | 综合正确率、速度、词汇力等维度计算战力值，持久化历史记录 |
+| **AI 助手问答** | 主页和分析页均支持 AI 聊天，含会话管理和 Markdown 渲染 |
+
+---
+
+## 技术架构
+
+### 技术栈
+
+- **框架**: [Next.js 16](https://nextjs.org) (App Router)
+- **UI 库**: [React 19](https://react.dev)
+- **语言**: [TypeScript 5](https://www.typescriptlang.org)
+- **样式**: [Tailwind CSS v4](https://tailwindcss.com)
+- **状态管理**: [Zustand 5](https://zustand-demo.pmnd.rs) (with localStorage persistence)
+- **图标**: [Lucide React](https://lucide.dev)
+- **Markdown 渲染**: [react-markdown](https://github.com/remarkjs/react-markdown)
+
+### 目录结构
+
+```
+src/
+├── app/                        # Next.js App Router 页面
+│   ├── page.tsx                # 首页 (/)
+│   ├── layout.tsx              # 根布局（导航栏）
+│   ├── login/page.tsx          # 登录/注册 (/login)
+│   ├── dashboard/page.tsx      # 战力仪表盘 (/dashboard)
+│   ├── train/page.tsx          # 训练选择 (/train)
+│   ├── read/[id]/page.tsx      # 阅读答题 (/read/[groupId]-[articleIndex])
+│   ├── analysis/[groupId]/page.tsx  # 错误分析报告 (/analysis/[groupId])
+│   ├── review/page.tsx         # 今日复习 (/review)
+│   ├── profile/page.tsx        # 个人主页 (/profile)
+│   └── settings/page.tsx       # 设置 (/settings)
+│
+├── components/
+│   ├── home/
+│   │   ├── mode-card.tsx       # 训练模式卡片
+│   │   └── power-orb.tsx       # 战力值圆形仪表
+│   ├── layout/
+│   │   └── app-nav.tsx         # 底部导航栏
+│   └── ui/                     # 基础 UI 组件
+│       ├── button.tsx
+│       ├── card.tsx
+│       ├── input.tsx
+│       ├── progress.tsx
+│       └── skeleton.tsx
+│
+├── lib/
+│   ├── api-client.ts           # 后端 API 全量封装（含 Mock 回退）
+│   ├── auth-store.ts           # 认证状态（Zustand + localStorage）
+│   ├── store.ts                # 训练会话状态（Zustand + localStorage）
+│   ├── mock-data.ts            # 本地 Mock 训练数据
+│   └── utils.ts                # Tailwind 工具函数 cn()
+│
+└── types/
+    ├── home.ts                 # 首页数据类型
+    ├── reading.ts              # 阅读页数据类型
+    └── training.ts             # 训练核心类型（TrainingGroup, Article, Question等）
+```
+
+---
+
+## 页面说明
+
+### `/` 首页
+- 展示用户名、战力值圆形仪表
+- 今日推荐：从 API 获取待复习题目数量，引导用户复习
+- 继续上次未完成训练的快捷入口
+- 四种训练模式卡片（速读/精读/猜词/模考），均跳转至 `/train`
+- 右下角 AI 助手悬浮球，支持实时问答、**会话管理**（切换/新建会话）、**历史记录加载**，聊天内容支持 **Markdown 渲染**
+
+### `/login` 登录与注册
+- 双 Tab（登录 / 注册）切换
+- 注册需邀请码验证
+- 支持管理员隐藏入口（5 次快速点击 Logo）
+
+### `/train` 训练选择
+- 难度选择（L1 初级 / L2 中级 / L3 高级 / L4 竞赛）
+- 主题选择（科技/文化/社会/环境/教育，可选）
+- 提交后调用后端 `training_set` API 生成文章（含轮询等待）
+- 展示历史训练记录，可跳转查看分析报告（**不会重复触发 AI 诊断**）
+
+### `/read/[groupId]-[articleIndex]` 阅读答题
+- 左栏：文章内容（段落级 IntersectionObserver 计时）
+- 右栏：答题区（题目导航、选项高亮、进度条）
+- 支持答题卡全览（跨文章跳题）
+- 完成最后一篇后跳转分析页，期间自动计算战力分数
+- 训练全程使用同一 `session_id`（等同于 `group.group_id`），保证 AI 上下文连贯
+
+### `/analysis/[groupId]` 错误分析报告
+- **首次进入**（刚完成训练）：自动保存训练记录、触发错题 AI 诊断、保存错题和战力值
+- **历史回顾**（从训练记录点入）：仅展示历史数据，**不重复调用 AI 诊断 API**
+- 划词翻译/长难句提问改为**引用 UI**（显示引用气泡，不直接填充输入框）
+- AI 聊天支持 **Markdown 渲染**，聊天区高度**自适应视窗**
+
+### `/review` 今日复习
+- 从后端获取基于 SM-2 算法的待复习错题
+- 答题后展示正误与错因解析
+- 用户评分（0–5 级），系统自动更新下次复习时间
+
+### `/dashboard` 战力仪表盘
+- 实时从后端获取战力历史记录（`/api/memory/power`）
+- 展示总战力、各维度子分（词汇力/语法力/推断力/速读力/持久力）
+- 战力趋势折线图（基于历史记录）
+
+### `/profile` 个人主页
+- 展示用户信息（考区/年级/学校/注册日期）
+- 调用 `/api/users/stats` 获取统计数据（错题数/待复习数/战力值）
+
+### `/settings` 设置
+- 修改用户名、考区、年级、学校
+- 修改密码（成功后自动退出重新登录）
+- 退出登录
+
+---
+
+## API 对接说明
+
+所有后端请求封装在 `src/lib/api-client.ts`。当前兼容 `NEXT_PUBLIC_API_URL` 与 `NEXT_PUBLIC_API_BASE_URL` 两种变量名；当两者都未设置时，所有 API 函数自动回退到 **Mock 数据模式**，方便本地开发与演示。
+
+详细 API 调用说明请参见 [`api_used.md`](Docs/api_used.md)，详细 API 接口文档请参见 [`frontend_follow.md`](Docs/frontend_follow.md)。
+
+### 环境变量
+
+```env
+NEXT_PUBLIC_API_BASE_URL=https://your-backend-api.com
+NEXT_PUBLIC_API_URL=https://your-backend-api.com
+```
+
+### 关键设计：Session ID 管理
+
+| 场景 | session_id | 存储 |
+|------|-----------|------|
+| 训练会话 | 由后端 `/api/attempt` 返回，存为 `group.group_id` | Zustand persist |
+| 训练分析聊天 | 复用 `group.group_id`，保证上下文连贯 | 同上 |
+| 主页聊天 | 从服务端获取或本地生成 `chat_xxx`，跨页面持久化 | `homeChatSessionId` in Zustand persist |
+
+---
+
+## 本地开发
+
+### 环境要求
+
+- Node.js >= 20
+- npm >= 9
+
+### 快速启动
 
 ```bash
+# 克隆仓库
+git clone https://github.com/HechaoYannet/readwiseAI-frontend.git
+cd readwiseAI-frontend
+
+# 安装依赖
+npm install
+
+# 启动开发服务器（Mock 模式，无需后端）
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Mock 模式说明**：未设置 `NEXT_PUBLIC_API_URL` 且未设置 `NEXT_PUBLIC_API_BASE_URL` 时，所有 API 调用均使用本地 Mock 数据，包括 4 篇预置训练文章、AI 诊断模拟等，可完整体验训练→分析→复习全流程。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 连接后端
 
-## Learn More
+创建 `.env.local` 文件：
 
-To learn more about Next.js, take a look at the following resources:
+```env
+NEXT_PUBLIC_API_BASE_URL=https://your-backend.example.com
+NEXT_PUBLIC_API_URL=https://your-backend.example.com
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+重启开发服务器即可切换为真实 API 模式。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Environment Variables
-
-Create `.env.local`:
+### 可用脚本
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-NEXT_PUBLIC_API_TIMEOUT_MS=15000
-NEXT_PUBLIC_API_RETRY_TIMES=2
-NEXT_PUBLIC_RESULT_POLL_INTERVAL_MS=2000
-NEXT_PUBLIC_RESULT_POLL_TIMEOUT_MS=90000
+npm run dev      # 开发模式（http://localhost:3000）
+npm run build    # 生产构建
+npm run start    # 启动生产服务器
+npm run lint     # ESLint 检查
 ```
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 状态管理
 
-For split-repo deployment, set `NEXT_PUBLIC_API_BASE_URL` to your backend HTTPS domain (Railway or equivalent) and connect this frontend repo to Vercel.
+项目使用 **Zustand** 管理两个持久化 Store：
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### `useAuthStore` (`readwise-auth`)
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `token` | `string \| null` | JWT 访问令牌 |
+| `user` | `UserProfile \| null` | 用户基本信息 |
+| `stats` | `UserStats \| null` | 用户统计数据 |
+
+### `useTrainingStore` (`readwise-training`)
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `currentGroup` | `TrainingGroup \| null` | 当前训练组 |
+| `currentArticleIndex` | `number` | 当前文章索引 |
+| `answers` | `Record<string, AnswerRecord>` | 所有答题记录（含计时） |
+| `diagnosisResults` | `Record<string, DiagnosisResult>` | AI 错因诊断结果 |
+| `powerScore` | `PowerScore \| null` | 本次战力值 |
+| `trainingHistory` | `TrainingGroup[]` | 历史训练组（最近 20 条） |
+| `savedGroupIds` | `string[]` | 已同步到服务端的训练组 ID（防止重复保存） |
+| `homeChatSessionId` | `string \| null` | 主页聊天的持久化 session ID |
+
+两个 Store 均通过 Zustand `persist` 中间件同步至 `localStorage`，支持页面刷新后恢复状态。
+
+---
+
+## 路由与导航
+
+底部导航栏（`src/components/layout/app-nav.tsx`）固定显示 5 个入口：
+
+| 图标 | 路由 | 说明 |
+|------|------|------|
+| 🏠 | `/` | 首页 |
+| 📖 | `/train` | 开始训练 |
+| ⚡ | `/dashboard` | 战力仪表盘 |
+| 👤 | `/profile` | 个人主页 |
+| ⚙️ | `/settings` | 设置 |
+
+导航栏在 `/login` 路由自动隐藏。
+
+---
+
+## 设计规范
+
+### 颜色体系
+
+| 用途 | 颜色 | 代码 |
+|------|------|------|
+| 主色 | 深蓝 | `#1E3A5F` |
+| 操作色 | 天蓝 | `sky-500` |
+| 成功 | 翠绿 | `emerald-500` |
+| 错误 | 红色 | `red-500` |
+| 警告 | 琥珀 | `amber-500` |
+| 背景 | 石板灰 | `slate-50 ~ slate-200` |
+
+### UI 规范
+
+- 圆角：`rounded-lg` (8px) / `rounded-xl` (12px)
+- 卡片阴影：`shadow-sm`
+- 动画：`transition-colors` / `transition-all`
+- 移动优先：最大宽度 `max-w-2xl`（列表页）/ `max-w-7xl`（双栏页）
+- 聊天窗口：高度自适应（`min-h` + `max-h` 基于 `40vh`）
+
+---
+
+## 贡献
+
+1. Fork 本仓库
+2. 创建功能分支 `git checkout -b feature/your-feature`
+3. 提交更改 `git commit -m 'feat: add your feature'`
+4. 推送分支 `git push origin feature/your-feature`
+5. 发起 Pull Request
+
+---
+
+## License
+
+MIT © ReadWise AI Team
+

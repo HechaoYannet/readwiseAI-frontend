@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AppNav from "@/components/layout/app-nav";
 
 export const metadata: Metadata = {
-  title: "Readwise AI",
-  description: "Readwise AI frontend",
+  title: "ReadWise AI",
+  description: "智能英语阅读训练平台",
 };
 
 export default function RootLayout({
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col pb-16">
+        {children}
+        <AppNav />
+      </body>
     </html>
   );
 }
