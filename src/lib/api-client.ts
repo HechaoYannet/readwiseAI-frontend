@@ -321,7 +321,13 @@ async function postAttempt(token: string, payload: Record<string, unknown>): Pro
     return res.json() as Promise<AttemptInitResponse>;
 }
 
-async function pollResult(token: string, requestId: string, maxRetries = 40, intervalMs = 2500): Promise<ResultResponse> {
+async function pollResult(
+    token: string,
+    requestId: string,
+    maxRetries = 40,
+    intervalMs = 2500,
+    onProgress?: (progress: Record<string, unknown>) => void,
+): Promise<ResultResponse & { agent_information?: Record<string, unknown>[]; progress?: Record<string, unknown> }> {
     for (let i = 0; i < maxRetries; i++) {
         console.log(`轮询 (attempt ${i + 1}/${maxRetries})...`);
         await sleep(intervalMs);
@@ -329,9 +335,13 @@ async function pollResult(token: string, requestId: string, maxRetries = 40, int
             const res = await fetch(`${API_BASE}/api/result/${requestId}`, {headers: authHeaders(token)});
             if (res.status === 403) throw new Error('无权访问该请求结果');
             if (!res.ok) continue;
-            const data = await res.json() as ResultResponse;
+            const data = await res.json();
             if (data.status === 'completed') return data;
             if (data.status === 'failed') return data;
+            // Report progress during processing
+            if (data.progress && onProgress) {
+                onProgress(data.progress);
+            }
         } catch (e) {
             if (e instanceof Error && e.message === '无权访问该请求结果') throw e;
         }
@@ -431,12 +441,18 @@ export async function generateTrainingGroup(
     token: string,
     difficulty = 'L2',
     topic?: string,
+    onProgress?: (progress: {
+        total_tasks: number;
+        completed_tasks: number;
+        current_task: string | null;
+        percentage: number;
+        steps: Array<{ id: string; description: string; status: string }>;
+    }) => void,
 ): Promise<TrainingGroup> {
     requireApiBase();
 
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    //try {
     const initResp: AttemptInitResponse = await postAttempt(token, {
         request_type: 'training_set',
         session_id: sessionId,
@@ -444,7 +460,7 @@ export async function generateTrainingGroup(
         user_level: difficulty,
         ...(topic ? {topic} : {}),
     });
-    const result = await pollResult(token, initResp.request_id, 100, 3000);
+    const result = await pollResult(token, initResp.request_id, 100, 3000, onProgress as ((p: Record<string, unknown>) => void) | undefined);
     if (result.status === 'completed' && result.results) {
         return mapTrainingSetResult(result.results, difficulty, initResp.session_id ?? sessionId);
     }
@@ -544,18 +560,25 @@ export async function submitAttempt(
 
 // ── QA API (POST /api/attempt with request_type: qa) ─────────────────────────
 
+export interface QAResult {
+    text: string;
+    agentInformation?: Record<string, unknown>[];
+}
+
 export async function submitQA(
     token: string,
     payload: QAPayload,
-): Promise<string> {
+): Promise<QAResult> {
     requireApiBase();
     try {
         const initResp = await postAttempt(token, payload as unknown as Record<string, unknown>);
         const result = await pollResult(token, initResp.request_id, 20, 2000);
+        const agentInfo = result.agent_information as Record<string, unknown>[] | undefined;
         if (result.status === 'completed' && result.results) {
             const sub = result.results.sub_001 as Record<string, unknown> | undefined;
-            if (!sub) return 'AI 未返回结果，请重试';
+            if (!sub) return { text: 'AI 未返回结果，请重试', agentInformation: agentInfo };
             // Parse per query_type per frontend_follow.md §13.4
+            let text = '';
             switch (payload.query_type) {
                 case 'word': {
                     const basicMeaning = sub.basic_meaning as Record<string, unknown> | undefined;
@@ -565,7 +588,8 @@ export async function submitQA(
                     const parts = [translation];
                     if (contextMeaning) parts.push(`语境含义：${contextMeaning}`);
                     if (usageNotes) parts.push(`用法说明：${usageNotes}`);
-                    return parts.filter(Boolean).join('\n') || '暂无释义';
+                    text = parts.filter(Boolean).join('\n') || '暂无释义';
+                    break;
                 }
                 case 'sentence': {
                     const translation = sub.translation as string | undefined;
@@ -577,7 +601,8 @@ export async function submitQA(
                     if (mainClause) parts.push(`主干：${mainClause}`);
                     if (structureAnalysis) parts.push(`结构：${structureAnalysis}`);
                     if (keyPoints?.length) parts.push(`语法要点：${keyPoints.join('、')}`);
-                    return parts.filter(Boolean).join('\n') || '暂无分析结果';
+                    text = parts.filter(Boolean).join('\n') || '暂无分析结果';
+                    break;
                 }
                 case 'grammar': {
                     const grammarPoint = sub.grammar_point as string | undefined;
@@ -587,7 +612,8 @@ export async function submitQA(
                     if (grammarPoint) parts.push(`语法点：${grammarPoint}`);
                     if (explanation) parts.push(explanation);
                     if (examples?.length) parts.push(`例句：${examples.join('；')}`);
-                    return parts.filter(Boolean).join('\n') || '暂无语法解释';
+                    text = parts.filter(Boolean).join('\n') || '暂无语法解释';
+                    break;
                 }
                 case 'translate': {
                     const translation = sub.translation as string | undefined;
@@ -595,19 +621,22 @@ export async function submitQA(
                     const parts: string[] = [];
                     if (translation) parts.push(translation);
                     if (notes) parts.push(`注：${notes}`);
-                    return parts.filter(Boolean).join('\n') || '暂无翻译结果';
+                    text = parts.filter(Boolean).join('\n') || '暂无翻译结果';
+                    break;
                 }
                 case 'free':
                 default: {
-                    return (sub.answer as string | undefined) ?? (sub.content as string | undefined) ?? '暂无回答';
+                    text = (sub.answer as string | undefined) ?? (sub.content as string | undefined) ?? '暂无回答';
+                    break;
                 }
             }
+            return { text, agentInformation: agentInfo };
         }
-        if (result.status === 'failed') return `AI 分析失败：${result.error_log?.join(', ') ?? '未知错误'}`;
+        if (result.status === 'failed') return { text: `AI 分析失败：${result.error_log?.join(', ') ?? '未知错误'}` };
     } catch (e) {
-        return `AI 请求出错：${e instanceof Error ? e.message : '未知错误'}`;
+        return { text: `AI 请求出错：${e instanceof Error ? e.message : '未知错误'}` };
     }
-    return 'AI 响应超时，请重试';
+    return { text: 'AI 响应超时，请重试' };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -764,6 +793,7 @@ export interface SessionListResponse {
     session_type: string;
     session_ids: string[];
     count: number;
+    titles?: Record<string, string>;  // chatting sessions include a title map
 }
 
 export async function getSessions(token: string, sessionType: 'training' | 'chatting' = 'training'): Promise<SessionListResponse> {

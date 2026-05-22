@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { BookOpen, ChevronRight, Loader2, PlayCircle, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AIProgress, type GenStep } from '@/components/ui/ai-progress';
 import { useTrainingStore } from '@/lib/store';
 import { useAuthStore } from '@/lib/auth-store';
 import { generateTrainingGroup } from '@/lib/api-client';
@@ -35,14 +36,29 @@ export default function TrainPage() {
   const [topic, setTopic] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [genCurrentTask, setGenCurrentTask] = useState('正在规划训练方案...');
+  const [genSteps, setGenSteps] = useState<GenStep[]>([]);
 
   const hasInProgress = currentGroup?.status === 'in_progress';
 
   async function handleStart() {
     setLoading(true);
     setError(null);
+    setGenCurrentTask('正在规划训练方案...');
+    setGenSteps([]);
     try {
-      const group = await generateTrainingGroup(token ?? '', difficulty, topic ?? undefined);
+      const group = await generateTrainingGroup(token ?? '', difficulty, topic ?? undefined, (p) => {
+        setGenCurrentTask(p.current_task ?? '处理中...');
+        const rawSteps: Array<{ id: string; description: string; status: string }> =
+          Array.isArray(p.steps) ? p.steps : [];
+        setGenSteps(
+          rawSteps.map((s) => ({
+            id: s.id,
+            description: s.description,
+            status: (s.status as GenStep['status']) ?? 'pending',
+          })),
+        );
+      });
       startGroup(group);
       router.push(`/read/${group.group_id}-0`);
     } catch {
@@ -145,6 +161,14 @@ export default function TrainPage() {
           {topic === null && <p className="mt-2 text-xs text-slate-400">不选则随机主题</p>}
         </CardContent>
       </Card>
+
+      {/* AI Generation progress */}
+      {loading && (
+        <AIProgress
+          currentTask={genCurrentTask}
+          steps={genSteps}
+        />
+      )}
 
       <Card className="border-slate-100 bg-slate-50">
         <CardContent className="pt-4">
