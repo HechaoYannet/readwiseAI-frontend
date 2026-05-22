@@ -71,7 +71,7 @@ function LongSentenceItem({ sentence, onCite, token, sessionId }: {
         content: sentence,
         session_id: sessionId,
       });
-      setTranslation(result);
+      setTranslation(result.text);
     } catch {
       setTranslation('翻译失败，请重试');
     } finally {
@@ -90,7 +90,7 @@ function LongSentenceItem({ sentence, onCite, token, sessionId }: {
         content: sentence,
         session_id: sessionId,
       });
-      setParsed(result);
+      setParsed(result.text);
     } catch {
       setParsed('解析失败，请重试');
     } finally {
@@ -352,7 +352,7 @@ export default function AnalysisPage({ params }: AnalysisPageProps) {
         content,
         session_id: group.group_id,
       });
-      setChatMessages((prev) => [...prev, { role: 'bot', text: reply }]);
+      setChatMessages((prev) => [...prev, { role: 'bot', text: reply.text }]);
     } catch {
       setChatMessages((prev) => [...prev, { role: 'bot', text: '请求失败，请重试' }]);
     } finally {

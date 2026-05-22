@@ -228,7 +228,7 @@ export default function Home() {
         content: userMsg,
         session_id: sessionId,
       });
-      setAiMessages((prev) => [...prev, { role: 'bot', text: reply }]);
+      setAiMessages((prev) => [...prev, { role: 'bot', text: reply.text }]);
       // Refresh session list after first message
       if (sessionIds.length === 0 || !sessionIds.includes(sessionId)) {
         getSessions(token!, 'chatting').then((l) => setSessionIds(l.session_ids)).catch(() => {});
